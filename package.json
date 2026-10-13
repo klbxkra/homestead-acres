@@ -1,0 +1,31 @@
+{
+  "name": "homestead-acres",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A single-player farming game in the style of FarmVille 1, for PC and mobile browsers.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && npm run lint && npm test"
+  },
+  "dependencies": {
+    "phaser": "^3.90.0",
+    "preact": "^11.0.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@preact/preset-vite": "^2.10.6",
+    "eslint": "^10.12.0",
+    "globals": "^17.13.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.71.2",
+    "vite": "^8.3.4",
+    "vitest": "^5.0.4"
+  }
+}
