@@ -1,0 +1,10 @@
+[
+  { "id": "strawberry", "name": "Strawberries", "growHours": 4, "cost": 10, "sellPrice": 35, "xp": 1, "unlockLevel": 1 },
+  { "id": "soybean", "name": "Soybeans", "growHours": 24, "cost": 15, "sellPrice": 63, "xp": 2, "unlockLevel": 1 },
+  { "id": "eggplant", "name": "Eggplant", "growHours": 48, "cost": 25, "sellPrice": 88, "xp": 2, "unlockLevel": 2 },
+  { "id": "pumpkin", "name": "Pumpkins", "growHours": 8, "cost": 30, "sellPrice": 68, "xp": 1, "unlockLevel": 5 },
+  { "id": "wheat", "name": "Wheat", "growHours": 72, "cost": 35, "sellPrice": 115, "xp": 2, "unlockLevel": 6 },
+  { "id": "raspberry", "name": "Raspberries", "growHours": 2, "cost": 20, "sellPrice": 46, "xp": 2, "unlockLevel": 8 },
+  { "id": "rice", "name": "Rice", "growHours": 12, "cost": 45, "sellPrice": 96, "xp": 1, "unlockLevel": 10 },
+  { "id": "tomato", "name": "Tomatoes", "growHours": 8, "cost": 40, "sellPrice": 91, "xp": 2, "unlockLevel": 12 }
+]

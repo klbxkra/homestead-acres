@@ -12,7 +12,7 @@ A single-player **browser game for PC and mobile** in the style of FarmVille 1 (
 2. **Every state change is a command.** `PlantCrop`, `Harvest`, `BuyItem`, and so on are serializable objects applied by a single reducer. Single-player works by sending commands locally; co-op later sends the same commands over a socket.
 3. **Time and randomness are injected.** `core` never calls `Date.now()` or `Math.random()`. It takes a `now` timestamp and uses a seeded RNG stored in state. That gives deterministic tests, a time-scale setting, offline progress, and future network sync.
 4. **Content is data, not code.** Crops, animals, trees, buildings, and levels are defined in data tables. Balancing means editing data or multipliers, not logic.
-5. **Every rate is configurable.** Each timer, price, yield, and XP value is computed as `base × global multiplier × per-item override`.
+5. **Every rate is configurable.** Each timer, price, yield, and XP value is computed as `(per-item override ?? base) × global multiplier`. Overrides replace an item's base stats; the global multipliers still apply on top.
 6. **Saves are robust.** Writes are atomic, saves are versioned and migrated, backups roll, exports are easy, and save corruption never destroys progress.
 7. **Platform APIs stay at the edges.** Storage, the device lifecycle, and input go through small adapters (`SaveStore`, `Lifecycle`, input layer). A desktop wrapper later only swaps adapters.
 8. **Touch-first, mouse-friendly.** Every interaction must work with a finger and no hover. The mouse gets extras (hover tooltips, wheel zoom, keyboard shortcuts) on top.
@@ -45,18 +45,21 @@ D:\Farmville
 ├─ public/                  # PWA icons, manifest assets
 ├─ src/
 │  ├─ core/                 # PURE simulation (no Phaser/DOM/storage)
-│  │  ├─ state.ts           # GameState, PlayerState, FarmState, entity types
-│  │  ├─ commands.ts        # Command union type + validation
-│  │  ├─ reducer.ts         # apply(state, cmd, now, rules) -> { state, events }
-│  │  ├─ tick.ts            # time-based updates (growth, wither, animal readiness)
+│  │  ├─ state.ts           # GameState, PlayerState, FarmState, entity types, newGame()
+│  │  ├─ commands.ts        # Command union, envelope (playerId/farmId/clientSeq), error codes
+│  │  ├─ reducer.ts         # applyCommand(state, envelope, realNow, content) -> { state, events } | error; tick()
+│  │  ├─ events.ts          # GameEvent union (drives effects; broadcast in co-op)
+│  │  ├─ time.ts            # clock advance, offline-progress policy
+│  │  ├─ crops.ts           # derived crop/plot status, growth stages, withering
 │  │  ├─ rules.ts           # WorldRules: multipliers + presets
 │  │  ├─ economy.ts         # price/XP/yield formulas (all rule-aware)
 │  │  ├─ progression.ts     # levels, mastery, ribbons, unlocks
 │  │  ├─ grid.ts            # tile occupancy, footprints, placement validation
 │  │  ├─ rng.ts             # seeded PRNG (mulberry32) stored in state
-│  │  └─ ids.ts             # entity IDs (string, never array index)
-│  ├─ content/              # data tables + TS types (crops, trees, animals, buildings, ...)
-│  │  └─ index.ts           # loads + validates content (zod schemas)
+│  │  └─ ids.ts             # entity IDs (string, never array index), safe record lookup
+│  ├─ content/              # JSON data tables (crops, decorations, levels, base; later trees, animals, ...)
+│  │  ├─ schema.ts          # zod schemas + types
+│  │  └─ index.ts           # validates tables, builds lookups (defaultContent)
 │  ├─ persistence/
 │  │  ├─ SaveStore.ts       # interface: list/load/save/delete/backup/export/import
 │  │  ├─ IdbSaveStore.ts    # IndexedDB implementation (primary)
@@ -93,10 +96,10 @@ D:\Farmville
 
 ### 4.2 Crops (main loop)
 - **Plow** a plot: costs coins (default 15), gives 1 XP.
-- **Plant** a seed: costs coins, gives XP. Starts a timer `growMs = baseGrow × rules.cropGrowth`.
-- States: `plowed → planted (stages 1-3) → ripe → withered`.
-- **Wither**: a ripe crop withers after `ripeWindow = growMs × rules.witherWindowFactor` (FV1 used roughly 1× grow time). A withered crop can be plowed over, or revived with an Unwither item. **Withering can be turned off.**
-- **Harvest**: gives coins (sale value), counts toward mastery, and leaves the plot unplowed (FV1 behavior; a rule can keep plots plowed).
+- **Plant** a seed: costs coins, gives XP. Starts a timer `growMs = baseGrow × rules.cropGrowth`. The ripe time is fixed at planting, so changing rates only affects new plantings.
+- States: `fallow → plowed → growing (stages 0-2) → ripe → withered`.
+- **Wither**: a ripe crop withers after `ripeWindow = growMs × rules.witherWindowFactor` (FV1 used roughly 1× grow time). This is derived from the *current* rules, so switching withering off also revives crops that already withered. A withered crop can be plowed over (paying the plow fee), or revived with an Unwither item (Phase 5). **Withering can be turned off.**
+- **Harvest**: gives coins (sale value), counts toward mastery, and leaves the plot *fallow*, needing a new plow (FV1 behavior; the `keepPlowedAfterHarvest` rule skips that).
 - Example crop set (original names, FV1-like timings): 4h Strawberries, 8h Eggplant, 12h Wheat, 1d Corn, 2d Pumpkin, 3d Soybeans, 4h Raspberry, plus about 25 more unlocked by level.
 
 ### 4.3 Trees
@@ -152,7 +155,7 @@ interface WorldRules {
   witherWindowFactor: number;   // ripe window as fraction of grow time
   coinYield: number;            // multiplier on harvest coins
   xpGain: number;
-  seedCost: number;             // multiplier on purchase prices
+  buyCost: number;              // multiplier on all purchase prices (seeds, decorations, ...)
   plowCost: number;
   farmCashEarnRate: number;
   fuelRegenPerHour: number;
@@ -311,14 +314,14 @@ Art is the biggest unknown and is not included in these estimates.
 
 Toolchain: Node 24 LTS, Vite 8, TypeScript 6, Vitest 5, ESLint 10, Phaser 3.90, Preact 11.
 
-### Phase 1: Core simulation, headless (1–2 days)
-- [ ] State types, IDs, seeded RNG, `WorldRules` and presets
-- [ ] Grid and placement validation
-- [ ] Commands: Plow, Plant, Harvest, ClearWithered, Buy, Sell, Move
-- [ ] Time model, `tick`, derived crop status, wither logic
-- [ ] Economy formulas and the XP/level table
-- [ ] Content loader with zod validation; about 8 starter crops
-- [ ] **Verify**: unit tests for growth timing under various multipliers, wither on and off, cost and yield math, level-ups, invalid commands rejected, determinism (same commands give the same state)
+### Phase 1: Core simulation, headless (1–2 days) ✅ done 2026-10-14
+- [x] State types, IDs, seeded RNG, `WorldRules` and presets
+- [x] Grid and placement validation (footprints, rotation, bounds, overlap)
+- [x] Commands: Plow (also clears withered crops, replacing a separate ClearWithered), Plant, Harvest, Buy (decorations), Sell, Move
+- [x] Time model, `tick`, derived crop status, wither logic, offline policies
+- [x] Economy formulas and the XP/level table (70 levels, Farm Cash per level)
+- [x] Content loader with zod validation; 8 starter crops, 3 decorations
+- [x] **Verify**: 66 unit tests covering growth timing under multipliers and timeScale, wither on and off, offline full/capped/paused, clock rollback, cost and yield math, overrides, level-ups, invalid and inherited ids rejected, ownership check, immutability, determinism, and JSON round trip. Mutation check: three injected bugs were each caught.
 
 ### Phase 2: Playable farm, rendering and input (3–5 days)
 - [ ] Iso renderer, camera, plot views with growth stages

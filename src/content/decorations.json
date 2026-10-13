@@ -1,0 +1,5 @@
+[
+  { "id": "hay_bale", "name": "Hay Bale", "cost": 20, "xp": 2, "width": 1, "height": 1, "unlockLevel": 1 },
+  { "id": "white_fence", "name": "White Fence", "cost": 10, "xp": 1, "width": 1, "height": 1, "unlockLevel": 1 },
+  { "id": "garden_bench", "name": "Garden Bench", "cost": 150, "xp": 15, "width": 2, "height": 1, "unlockLevel": 3 }
+]
