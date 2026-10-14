@@ -1,7 +1,11 @@
 :root {
-  --hud-bg: rgba(40, 28, 14, 0.78);
+  --hud-bg: rgba(40, 28, 14, 0.82);
   --hud-fg: #fff8e7;
   --accent: #f4c542;
+  --panel-bg: #fff8e7;
+  --panel-fg: #3e2723;
+  --panel-border: #c9a46a;
+  --tool-size: 52px;
   --tap-min: 44px;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-right: env(safe-area-inset-right, 0px);
@@ -52,6 +56,17 @@ body {
   pointer-events: auto;
 }
 
+button {
+  font: inherit;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: default;
+}
+
+/* ------------------------------------------------------------------ HUD */
+
 .hud-top {
   position: absolute;
   top: calc(8px + var(--safe-top));
@@ -81,6 +96,675 @@ body {
   color: var(--accent);
 }
 
+.hud-level {
+  padding-left: 4px;
+}
+
+.level-badge {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 35% 30%, #ffe082, #f9a825);
+  color: #5d4037;
+  font-weight: 800;
+}
+
+.xp-bar {
+  position: relative;
+  width: 130px;
+  height: 18px;
+  border-radius: 9px;
+  background: rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+
+.xp-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: linear-gradient(#81d4fa, #29b6f6);
+  transition: width 0.3s ease;
+}
+
+.xp-text {
+  position: relative;
+  display: block;
+  text-align: center;
+  font-size: 11px;
+  line-height: 18px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+}
+
+.hud-speed {
+  color: #b3e5fc;
+}
+
+/* ------------------------------------------------------------------ Toolbar */
+
+.toolbar {
+  position: absolute;
+  right: calc(12px + var(--safe-right));
+  bottom: calc(12px + var(--safe-bottom));
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.tool-row {
+  display: flex;
+  gap: 6px;
+  padding: 6px;
+  border-radius: 16px;
+  background: var(--hud-bg);
+}
+
+.tool-status {
+  padding: 6px 12px;
+  border-radius: 12px;
+  background: var(--hud-bg);
+  color: var(--hud-fg);
+  font-size: 13px;
+}
+
+.tool-btn {
+  width: var(--tool-size);
+  height: var(--tool-size);
+  border: 2px solid transparent;
+  border-radius: 12px;
+  background: #fff3d6;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  transition: transform 0.08s ease;
+}
+
+.tool-btn:active {
+  transform: scale(0.94);
+}
+
+.tool-btn.active {
+  border-color: var(--accent);
+  background: #ffe7a3;
+  box-shadow: 0 0 0 2px rgba(244, 197, 66, 0.4);
+}
+
+.tool-btn:disabled {
+  opacity: 0.4;
+}
+
+.tool-icon {
+  font-size: 24px;
+  line-height: 1;
+}
+
+.market-btn {
+  background: #c8e6c9;
+}
+
+/* ------------------------------------------------------------------ Popups */
+
+.tooltip {
+  position: absolute;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--panel-bg);
+  color: var(--panel-fg);
+  border: 2px solid var(--panel-border);
+  font-size: 13px;
+  line-height: 1.4;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+}
+
+.tooltip-title {
+  font-weight: 700;
+}
+
+.toasts {
+  position: absolute;
+  top: calc(64px + var(--safe-top));
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.toast {
+  padding: 8px 16px;
+  border-radius: 18px;
+  background: var(--hud-bg);
+  color: var(--hud-fg);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  animation: toast-in 0.18s ease-out;
+}
+
+.toast-error {
+  background: rgba(183, 28, 28, 0.9);
+}
+
+.toast-success {
+  background: rgba(46, 125, 50, 0.92);
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
+.modal-backdrop {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.dialog {
+  min-width: 260px;
+  padding: 18px 20px;
+  border-radius: 16px;
+  background: var(--panel-bg);
+  color: var(--panel-fg);
+  border: 3px solid var(--panel-border);
+  font-size: 16px;
+}
+
+.dialog p {
+  margin: 0 0 16px;
+}
+
+.dialog-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.btn {
+  min-height: var(--tap-min);
+  padding: 0 18px;
+  border-radius: 12px;
+  border: 2px solid var(--panel-border);
+  background: #fff;
+  color: var(--panel-fg);
+  font-weight: 600;
+}
+
+.btn-primary {
+  background: #66bb6a;
+  border-color: #388e3c;
+  color: #fff;
+}
+
+/* ------------------------------------------------------------------ Market */
+
+.market {
+  width: min(760px, calc(100vw - 32px));
+  max-height: min(80vh, 640px);
+  display: flex;
+  flex-direction: column;
+  border-radius: 18px;
+  background: var(--panel-bg);
+  color: var(--panel-fg);
+  border: 3px solid var(--panel-border);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+
+.market-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: #f3dfb5;
+  border-bottom: 2px solid var(--panel-border);
+}
+
+.market-header h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.tabs {
+  display: flex;
+  gap: 6px;
+  margin-right: auto;
+}
+
+.tab {
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 2px solid transparent;
+  background: transparent;
+  color: var(--panel-fg);
+  font-weight: 600;
+}
+
+.tab.active {
+  background: #fff8e7;
+  border-color: var(--panel-border);
+}
+
+.close-btn {
+  width: var(--tap-min);
+  height: var(--tap-min);
+  border-radius: 50%;
+  border: none;
+  background: rgba(0, 0, 0, 0.08);
+  color: var(--panel-fg);
+  font-size: 16px;
+}
+
+.market-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+  padding: 14px;
+  overflow-y: auto;
+  touch-action: pan-y;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 12px 8px;
+  border-radius: 14px;
+  border: 2px solid #e6d3a8;
+  background: #fff;
+  color: var(--panel-fg);
+  text-align: center;
+}
+
+.card:not(:disabled):hover {
+  border-color: var(--accent);
+}
+
+.card.selected {
+  border-color: #66bb6a;
+  box-shadow: 0 0 0 2px rgba(102, 187, 106, 0.35);
+}
+
+.card:disabled {
+  opacity: 0.55;
+  background: #f5f0e6;
+}
+
+.swatch {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 3px solid rgba(0, 0, 0, 0.12);
+  margin-bottom: 4px;
+}
+
+.card-name {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.card-line {
+  font-size: 12px;
+}
+
+.card-lock {
+  font-size: 12px;
+  font-weight: 600;
+  color: #8d6e63;
+}
+
+.market-hint {
+  margin: 0;
+  padding: 0 14px 10px;
+  font-size: 11px;
+  color: #8d6e63;
+}
+
+/* ------------------------------------------------------------------ In-game menu */
+
+.game-menu {
+  position: relative;
+}
+
+.menu-btn {
+  border: none;
+  font-size: 20px;
+  min-width: var(--tap-min);
+  justify-content: center;
+  padding: 0 12px;
+}
+
+.menu-scrim {
+  position: fixed;
+  inset: 0;
+}
+
+.menu-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 230px;
+  padding: 6px;
+  border-radius: 14px;
+  background: var(--panel-bg);
+  color: var(--panel-fg);
+  border: 2px solid var(--panel-border);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  z-index: 1;
+}
+
+.menu-status {
+  padding: 6px 10px 8px;
+  font-size: 12px;
+  color: #8d6e63;
+}
+
+.menu-status.error {
+  color: #c62828;
+  font-weight: 600;
+}
+
+.menu-item {
+  display: block;
+  width: 100%;
+  min-height: var(--tap-min);
+  padding: 0 12px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--panel-fg);
+  text-align: left;
+  font-weight: 600;
+}
+
+.menu-item:hover:not(:disabled) {
+  background: #f3dfb5;
+}
+
+/* ------------------------------------------------------------------ Title screen */
+
+.title-screen {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  touch-action: pan-y;
+  user-select: text;
+  -webkit-user-select: text;
+  background:
+    radial-gradient(ellipse at 50% 120%, #7cb342 0%, transparent 60%),
+    linear-gradient(#87ceeb 0%, #bfe6f5 45%, #8bc34a 46%, #5a8f3c 100%);
+  padding: calc(16px + var(--safe-top)) calc(16px + var(--safe-right)) calc(16px + var(--safe-bottom)) calc(16px + var(--safe-left));
+}
+
+.title-inner {
+  max-width: 640px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.title-header {
+  text-align: center;
+  color: #3e2723;
+}
+
+.title-header h1 {
+  margin: 8px 0 4px;
+  font-size: 40px;
+  color: #fff8e7;
+  text-shadow: 0 3px 0 #8d6e63, 0 6px 14px rgba(0, 0, 0, 0.3);
+  letter-spacing: 0.5px;
+}
+
+.title-header p {
+  margin: 0;
+  font-weight: 600;
+}
+
+.title-loading {
+  text-align: center;
+  color: #3e2723;
+}
+
+.banner {
+  padding: 10px 14px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.banner-warn {
+  background: #fff3cd;
+  color: #7a4f01;
+  border: 2px solid #f0c36d;
+}
+
+.slot-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.slot-card,
+.new-farm {
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: var(--panel-bg);
+  color: var(--panel-fg);
+  border: 3px solid var(--panel-border);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+}
+
+.slot-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.slot-info {
+  flex: 1;
+  min-width: 180px;
+}
+
+.slot-name {
+  font-size: 19px;
+  font-weight: 800;
+}
+
+.slot-line {
+  font-size: 14px;
+}
+
+.muted {
+  color: #8d6e63;
+}
+
+.slot-buttons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.slot-confirm {
+  font-weight: 700;
+  color: #c62828;
+}
+
+.icon-btn {
+  padding: 0 12px;
+  font-size: 18px;
+}
+
+.btn-danger {
+  background: #e53935;
+  border-color: #b71c1c;
+  color: #fff;
+}
+
+.btn:disabled {
+  opacity: 0.55;
+}
+
+.title-actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.title-hint {
+  margin: 0;
+  text-align: center;
+  font-size: 14px;
+  color: #3e2723;
+}
+
+.link-btn {
+  border: none;
+  background: none;
+  padding: 0;
+  color: #1b5e20;
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+.new-farm h2 {
+  margin: 0 0 12px;
+  font-size: 20px;
+}
+
+.field-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.field {
+  flex: 1;
+  min-width: 160px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.field input {
+  min-height: var(--tap-min);
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 2px solid var(--panel-border);
+  font: inherit;
+  font-size: 16px; /* 16px stops iOS zooming into the field */
+  font-weight: 600;
+  background: #fff;
+  color: var(--panel-fg);
+}
+
+.presets {
+  margin: 14px 0;
+  padding: 0;
+  border: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 8px;
+}
+
+.presets legend {
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.preset {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 8px;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 2px solid #e6d3a8;
+  background: #fff;
+  cursor: pointer;
+}
+
+.preset.selected {
+  border-color: #66bb6a;
+  box-shadow: 0 0 0 2px rgba(102, 187, 106, 0.35);
+}
+
+.preset input {
+  grid-row: span 2;
+  width: 18px;
+  height: 18px;
+  accent-color: #43a047;
+}
+
+.preset-name {
+  font-weight: 800;
+}
+
+.preset-blurb {
+  font-size: 12px;
+  color: #6d4c41;
+}
+
+/* ------------------------------------------------------------------ App notice & welcome */
+
+.app-notice {
+  position: absolute;
+  top: calc(64px + var(--safe-top));
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: min(560px, calc(100vw - 32px));
+}
+
+.app-notice .toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  white-space: normal;
+}
+
+.notice-close {
+  border: none;
+  background: rgba(255, 255, 255, 0.2);
+  color: inherit;
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  flex: none;
+}
+
+.welcome {
+  max-width: 420px;
+}
+
+.welcome h2 {
+  margin: 0 0 6px;
+  font-size: 20px;
+}
+
+.welcome p {
+  margin: 0 0 10px;
+}
+
+.welcome .warn {
+  color: #b71c1c;
+}
+
+/* ------------------------------------------------------------------ Debug */
+
 .debug-info {
   position: absolute;
   left: calc(8px + var(--safe-left));
@@ -90,6 +774,125 @@ body {
   background: rgba(0, 0, 0, 0.45);
   color: #fff;
   font: 12px ui-monospace, Consolas, monospace;
+}
+
+/* ------------------------------------------------------------------ Phones (landscape) */
+
+@media (max-height: 500px) {
+  :root {
+    --tool-size: 44px;
+  }
+
+  .hud-title {
+    display: none;
+  }
+
+  .hud-top {
+    right: calc(72px + var(--safe-right));
+  }
+
+  .hud-chip {
+    min-height: 38px;
+    font-size: 13px;
+    padding: 0 10px;
+  }
+
+  .level-badge {
+    width: 30px;
+    height: 30px;
+  }
+
+  .xp-bar {
+    width: 96px;
+  }
+
+  /* Toolbar becomes a vertical rail on the right edge, within thumb reach. */
+  .toolbar {
+    top: calc(8px + var(--safe-top));
+    bottom: calc(8px + var(--safe-bottom));
+    right: calc(8px + var(--safe-right));
+    flex-direction: row-reverse;
+    align-items: flex-start;
+  }
+
+  .tool-row {
+    flex-direction: column;
+    flex-wrap: wrap-reverse;
+    max-height: 100%;
+    padding: 4px;
+    gap: 4px;
+  }
+
+  .tool-icon {
+    font-size: 20px;
+  }
+
+  .tool-status {
+    align-self: flex-end;
+  }
+
+  /* Market slides in as a full-height side sheet. */
+  .modal-backdrop:has(.market) {
+    place-items: stretch end;
+  }
+
+  .market {
+    width: min(460px, 78vw);
+    max-height: none;
+    height: 100%;
+    border-radius: 18px 0 0 18px;
+    border-right: none;
+    padding-right: var(--safe-right);
+  }
+
+  .market-header {
+    padding: 8px 10px;
+  }
+
+  .market-header h2 {
+    display: none;
+  }
+
+  .market-grid {
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    padding: 10px;
+    gap: 8px;
+  }
+
+  .card {
+    padding: 8px 6px;
+  }
+
+  .swatch {
+    width: 30px;
+    height: 30px;
+  }
+
+  .debug-info {
+    display: none;
+  }
+
+  .title-header h1 {
+    font-size: 28px;
+    margin-top: 0;
+  }
+
+  .title-inner {
+    gap: 10px;
+  }
+
+  .presets {
+    grid-template-columns: 1fr 1fr;
+    margin: 10px 0;
+  }
+
+  .preset-blurb {
+    display: none;
+  }
+
+  .menu-btn {
+    font-size: 18px;
+  }
 }
 
 /* Phones are landscape-only (PLAN.md section 8). Shown on small touch screens held upright. */
@@ -128,13 +931,5 @@ body {
   60%,
   100% {
     transform: rotate(-90deg);
-  }
-}
-
-/* Tighter HUD on phone-sized landscape screens. */
-@media (max-height: 500px) {
-  .hud-chip {
-    font-size: 13px;
-    padding: 0 10px;
   }
 }

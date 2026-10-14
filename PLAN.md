@@ -61,25 +61,38 @@ D:\Farmville
 │  │  ├─ schema.ts          # zod schemas + types
 │  │  └─ index.ts           # validates tables, builds lookups (defaultContent)
 │  ├─ persistence/
-│  │  ├─ SaveStore.ts       # interface: list/load/save/delete/backup/export/import
+│  │  ├─ SaveStore.ts       # interface: listSlots/read/write/remove + backup rotation policy
 │  │  ├─ IdbSaveStore.ts    # IndexedDB implementation (primary)
-│  │  ├─ MemorySaveStore.ts # tests
-│  │  ├─ serialize.ts       # state <-> JSON, checksums
-│  │  └─ migrations/        # v1->v2, v2->v3 ...
+│  │  ├─ MemorySaveStore.ts # tests + no-storage fallback
+│  │  ├─ emergency.ts       # synchronous localStorage copy written on pagehide
+│  │  ├─ loadSlot.ts        # emergency (if newer) -> main -> backups fallback
+│  │  ├─ serialize.ts       # save envelope, checksum, decode (migrate + validate)
+│  │  ├─ schema.ts          # zod schema for GameState
+│  │  └─ migrations.ts      # v1->v2, v2->v3 ... (none yet)
 │  ├─ platform/
-│  │  ├─ lifecycle.ts       # visibilitychange/pagehide -> flush save; resume -> catch up time
+│  │  ├─ lifecycle.ts       # visibilitychange/pagehide/freeze hooks
 │  │  ├─ device.ts          # touch/mouse detection, orientation, safe areas, DPR cap
-│  │  └─ install.ts         # PWA install prompt + iOS "Add to Home Screen" hint
+│  │  ├─ files.ts           # download/read files for export/import
+│  │  ├─ storage.ts         # navigator.storage.persist()
+│  │  └─ install.ts         # PWA install prompt + iOS "Add to Home Screen" hint (Phase 7)
+│  ├─ app/                  # wiring between game, UI, saves and transport
+│  │  ├─ GameApp.ts         # farm list, new/open/exit/delete, export/import, clock tick, lifecycle
+│  │  ├─ Autosaver.ts       # when to save (debounce, interval, hide, pagehide emergency copy)
+│  │  ├─ awaySummary.ts     # "while you were away" counts
+│  │  ├─ session.ts         # Session type (transport + UI store), new-farm rules, dev URL options
+│  │  ├─ store.ts           # tiny observable store
+│  │  └─ uiState.ts         # tool, seed, held item, paint mode, menus, tooltip, toasts, confirm
 │  ├─ net/                  # co-op seam (local-only for now)
-│  │  ├─ Transport.ts       # interface: send(cmd), onState, onEvent
+│  │  ├─ Transport.ts       # interface: send(cmd), tick, subscribe(state, events)
 │  │  └─ LocalTransport.ts  # applies commands directly to local state
 │  ├─ game/                 # Phaser scenes & rendering
-│  │  ├─ scenes/            # Boot, Preload, Farm, Visit(later)
+│  │  ├─ scenes/            # FarmScene (Visit later)
 │  │  ├─ iso.ts             # tile<->screen projection, depth sorting
-│  │  ├─ input/             # unified pointer gestures: tap, long-press, drag-pan, pinch, wheel
-│  │  ├─ views/             # PlotView, TreeView, AnimalView, BuildingView
-│  │  ├─ tools/             # Plow, Seed, Harvest, Move, Rotate, Sell, Fertilize
-│  │  └─ fx/                # coin pops, XP sparkles, particles
+│  │  ├─ art/               # placeholder textures drawn in code (replaced by an atlas in Phase 7)
+│  │  ├─ input/             # gesture recognizer (pure) + DOM pointer binding + keyboard
+│  │  ├─ views/             # entity sprites synced from state (plots, decorations; trees/animals later)
+│  │  ├─ tools/             # toolActions: what a tap or painted tile does with each tool (pure)
+│  │  └─ fx/                # coin/XP pop-ups (particles later)
 │  ├─ ui/                   # Preact overlay: HUD, Toolbar, Market, Settings, Saves, Dialogs
 │  └─ main.ts               # entry
 └─ tests/                   # vitest specs mirroring src/core
@@ -193,9 +206,9 @@ All formulas go through `economy.ts`, for example `effectiveGrowMs(item, rules)`
 ## 7. Persistence (local saves, browser)
 
 - **Storage**: IndexedDB database `homestead-acres` with these object stores:
-  - `slots`: metadata (farm name, level, coins, playtime, last played, thumbnail) for the slot select screen
+  - `slots`: metadata (farm name, farmer, level, coins, playtime, created, last saved) for the farm list
   - `saves`: current save per slot
-  - `backups`: last 5 saves per slot (rotated on each successful save)
+  - `backups`: up to 5 older saves per slot, newest first. The previous save is kept when the newest backup is at least 10 minutes older, and always on a session's first save, so backups span hours of play rather than the last few autosaves.
 - **Format**: `{ schemaVersion, gameVersion, savedAt, checksum, rules, state }`, stored as JSON.
 - **Atomic write**: one IndexedDB transaction writes the save, rotates backups, and updates metadata. It all commits or nothing does.
 - **When to save**:
@@ -226,10 +239,14 @@ All formulas go through `economy.ts`, for example `effectiveGrowMs(item, rules)`
 | Use tool / multi-tool | Tap | Click |
 | Pan camera | One-finger drag (on empty ground or while not moving an item) | Drag, or WASD/arrows |
 | Zoom | Pinch | Wheel, +/- |
-| Item info / tooltip | Long-press (about 400ms) | Hover |
-| Move item | Select item, then drag it (the camera does not pan during an item drag) | Same |
+| Item info / tooltip | Long-press (about 400ms); the next tap only dismisses it | Hover |
+| Move or place item | Tap the item to pick it up, then tap where it goes, or drag the preview and release (the camera doesn't pan while holding an item; two fingers still pan) | Preview follows the mouse; click to drop |
+| Rotate held item | Toolbar button | R |
 | Cancel tool | Toolbar button | Esc / right-click |
-| Repeat action over many plots | Drag-paint with plow/seed/harvest tool active (toggle) | Same, plus hold-drag |
+| Repeat action over many plots | Paint toggle in the toolbar, then drag across plots (every tile on the path counts, even on fast swipes) | Same, or Shift-drag |
+| Tools | Toolbar | 1–6 tools, M market, P paint |
+
+Pressing, pausing, then dragging still drags: the long-press info shows first, then the drag takes over.
 
 **Layout (Preact overlay, responsive by CSS breakpoints)**
 - **Large screens**: FV1-style layout. Resources bar along the top, tool palette at the bottom right, and the market as a centered modal with tabs.
@@ -323,21 +340,27 @@ Toolchain: Node 24 LTS, Vite 8, TypeScript 6, Vitest 5, ESLint 10, Phaser 3.90, 
 - [x] Content loader with zod validation; 8 starter crops, 3 decorations
 - [x] **Verify**: 66 unit tests covering growth timing under multipliers and timeScale, wither on and off, offline full/capped/paused, clock rollback, cost and yield math, overrides, level-ups, invalid and inherited ids rejected, ownership check, immutability, determinism, and JSON round trip. Mutation check: three injected bugs were each caught.
 
-### Phase 2: Playable farm, rendering and input (3–5 days)
-- [ ] Iso renderer, camera, plot views with growth stages
-- [ ] Unified gesture layer (tap, long-press, drag-pan, pinch, wheel, keys)
-- [ ] Tools: multi-tool, plow, seed picker, harvest, move, sell, drag-paint
-- [ ] Responsive HUD, toolbar (desktop palette or phone rail), Market (seeds tab)
-- [ ] Portrait "rotate device" overlay on phones
-- [ ] **Verify**: plow, plant, and harvest a crop with `timeScale` set high on both desktop (mouse) and phone (touch); screenshots of both layouts
+### Phase 2: Playable farm, rendering and input (3–5 days) ✅ done 2026-10-14
+- [x] Iso renderer, camera (fit-to-farm, zoom 0.5–2.5×, bounds), plot views with 3 growth stages + ripe + withered, decorations as iso boxes, placeholder art drawn at 2× for sharp zoom
+- [x] Unified gesture layer (tap, long-press, drag-pan, pinch, wheel, keys)
+- [x] Tools: multi-tool, plow, seed, harvest, move, sell (with confirmation), place, drag-paint
+- [x] Responsive HUD (level + XP bar, coins, cash, speed badge), toolbar (desktop palette or phone rail), Market (seeds + decorations tabs), tooltips, toasts, coin/XP pop-ups
+- [x] Portrait "rotate device" overlay on phones
+- [x] Commands go through `Transport` (`LocalTransport`); the clock ticks every 500ms while visible and catches up on resume
+- [x] **Verify**: in the browser with `?preset=speedrun`, a full loop with real mouse input: paint-plow 2 rows, choose seeds, paint-plant 14 plots, ripen, paint-harvest (+490 coins), level-ups, place, rotate, move, and sell decorations (with confirmation, 50% refund), invalid placement rejected. Phone landscape (740×360, touch emulation, 2× DPR): rail toolbar, side-sheet market; synthetic touch tap, long-press tooltip, pinch 3× and one-finger pan. 91 unit tests (gestures, tool logic, tooltips/formatting, transport). Perf: 22×22 fully planted farm syncs in about 0.2ms per tick and renders 972 sprites in about 1.7ms. *Pending (user): feel-test on a real phone.*
 
-### Phase 3: Persistence (1–2 days)
-- [ ] `SaveStore` interface, `IdbSaveStore`, `MemorySaveStore` for tests
-- [ ] Transactional save with backups, checksum, schema version and migration framework
-- [ ] Autosave plus lifecycle flush (visibilitychange/pagehide); slot select and new-farm screen
-- [ ] Offline progress on load and resume; `navigator.storage.persist()`
-- [ ] Export/Import `.farm` file
-- [ ] **Verify**: plant, close the tab, reopen, and the crop has progressed correctly; background the tab on a phone, kill it, and progress is kept; a corrupted save falls back to a backup; export from PC and import on the phone works; tests for migrations and round-trip serialization
+Dev URL options (until the Phase 4 settings screen): `?preset=classic|relaxed|idle|speedrun`, `?timeScale=600`, `?coins=5000`.
+
+### Phase 3: Persistence (1–2 days) ✅ done 2026-10-15
+- [x] `SaveStore` interface, `IdbSaveStore` (via `idb`), `MemorySaveStore` (tests, and the fallback when the browser blocks storage, with a warning to export)
+- [x] Transactional save with backups (up to 5, at most one per 10 minutes, plus one at the start of every session), checksum (cyrb53), schema version and migration framework, zod validation of everything loaded or imported
+- [x] Autosave: 2s after any action, every 30s regardless (keeps the offline-time anchor fresh), immediately on `visibilitychange → hidden`, on exit to the farm list, and a synchronous localStorage "emergency copy" on `pagehide` that is used only if it's newer than the IndexedDB save
+- [x] Farm list (title screen) with new-farm form (name, farmer, rules preset), play, export, delete with confirmation, import; in-game ☰ menu with save status, save now, export, save & exit
+- [x] Offline progress on load and on resume, with a "Welcome back" summary (crops ripened or withered, or timers paused); `navigator.storage.persist()` requested on first farm open
+- [x] Export/Import `.farm` file (imports become a new farm, renamed if the name is taken)
+- [x] **Verify**: in the browser: create a farm, plant, reload and stay away 95s at ×600; on reopen the strawberry had withered, the soybeans were still growing, and the welcome summary was correct. Corrupt the main save in IndexedDB: the backup was restored with a notice. A change made just before a reload survived; `pagehide` wrote the emergency copy, which was cleared after the next IndexedDB save. Export → import round trip; save & exit pauses the renderer; delete with confirmation; phone landscape layouts. 134 unit tests (serialize round trip, schema drift, corruption, newer-version refusal, migrations, both stores incl. IndexedDB via `fake-indexeddb`, backup rotation, load fallback order, autosave timing/playtime/errors, app flows), plus a mutation check of 3 injected persistence bugs and the damaged-backup fix. *Pending (user): real phone, killing the backgrounded tab, and a PC → phone file transfer.*
+
+Found and fixed during verification: after restoring a backup, the first save rotated the *damaged* main copy into the backups, pushing out a good one; it is now skipped (`skipBackup`).
 
 ### Phase 4: Settings and rates UI (1 day)
 - [ ] World Rules screen (presets plus sliders), per-save, with JSON import/export

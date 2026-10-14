@@ -1,21 +1,43 @@
 import { useEffect, useState } from 'preact/hooks';
-import { GAME_TITLE, GAME_VERSION } from '../config';
+import type { GameApp } from '../app/GameApp';
+import type { Session } from '../app/session';
+import { GAME_VERSION } from '../config';
 import { isTouchPrimary, renderPixelRatio, viewportSize } from '../platform/device';
+import { AppNotice, WelcomeBack } from './AppPopups';
+import { GameMenu } from './GameMenu';
+import { useStore } from './hooks';
+import { Hud } from './Hud';
+import { Market } from './Market';
+import { ConfirmDialog, Toasts, TooltipView } from './Popups';
+import { TitleScreen } from './TitleScreen';
+import { Toolbar } from './Toolbar';
 
-export function App() {
+export function App({ gameApp }: { gameApp: GameApp }) {
+  const { screen } = useStore(gameApp.store);
+  const session = gameApp.session;
   return (
     <>
-      <div class="hud-top">
-        <div class="hud-chip hud-title">{GAME_TITLE}</div>
-        <div class="hud-chip interactive">🪙 0</div>
-        <div class="hud-chip interactive">💵 0</div>
-        <div class="hud-chip interactive">⭐ Lv 1</div>
-      </div>
-      <DebugInfo />
+      {screen === 'farm' && session ? <FarmUi gameApp={gameApp} session={session} /> : <TitleScreen gameApp={gameApp} />}
+      <WelcomeBack gameApp={gameApp} />
+      <AppNotice gameApp={gameApp} />
+      {import.meta.env.DEV && <DebugInfo />}
       <div class="rotate-overlay">
         <div class="icon">📱</div>
         <div>Rotate your phone to landscape to play.</div>
       </div>
+    </>
+  );
+}
+
+function FarmUi({ gameApp, session }: { gameApp: GameApp; session: Session }) {
+  return (
+    <>
+      <Hud session={session} menu={<GameMenu gameApp={gameApp} />} />
+      <Toolbar session={session} />
+      <TooltipView session={session} />
+      <Toasts session={session} />
+      <Market session={session} />
+      <ConfirmDialog session={session} />
     </>
   );
 }
