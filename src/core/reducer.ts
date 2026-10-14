@@ -21,6 +21,7 @@ import type { GameEvent } from './events';
 import { entityAt, itemSize, placementProblem } from './grid';
 import { allocateId, lookup } from './ids';
 import { gainXp } from './progression';
+import { validateRules } from './rules';
 import type { WorldRules } from './rules';
 import type { FarmState, GameState, PlayerState, PlotEntity } from './state';
 import { advanceClock } from './time';
@@ -104,6 +105,8 @@ function execute(command: Command, ctx: Ctx): void {
       return sell(ctx, command.entityId);
     case 'move':
       return move(ctx, command.entityId, tile(command.x, command.y), command.rotated);
+    case 'setRules':
+      return setRules(ctx, command.rules);
     default:
       reject('invalid', `Unknown command type "${(command as { type?: unknown }).type}".`);
   }
@@ -221,6 +224,38 @@ function sell(ctx: Ctx, entityId: string): void {
   player.coins += refund;
   delete farm.entities[entityId];
   ctx.events.push({ type: 'sold', entityId, refund });
+}
+
+/**
+ * Replaces the world rules (PLAN.md section 5). The clock was already advanced
+ * under the old rules, so a timeScale change only affects time from now on.
+ * Grow times are fixed at planting, so growth changes only affect new plantings.
+ * Withering follows the current rules, but a change must never wither a ripe crop
+ * on the spot: crops that were ripe and would now count as withered get a fresh
+ * ripe window starting now.
+ */
+function setRules(ctx: Ctx, input: unknown): void {
+  const result = validateRules(input);
+  if (!result.ok) reject('invalid', result.error);
+  const before = ctx.state.rules;
+  const after = result.rules;
+  let refreshed = 0;
+
+  for (const farm of Object.values(ctx.state.farms)) {
+    for (const entity of Object.values(farm.entities)) {
+      if (entity.kind !== 'plot' || !entity.crop) continue;
+      const crop = entity.crop;
+      if (cropStatus(crop, ctx.now, before) === 'ripe' && cropStatus(crop, ctx.now, after) === 'withered') {
+        const shift = ctx.now - crop.readyAt; // keeps the grow time, so the window length is unchanged
+        crop.plantedAt += shift;
+        crop.readyAt += shift;
+        refreshed++;
+      }
+    }
+  }
+
+  ctx.state.rules = after;
+  ctx.events.push({ type: 'rulesChanged', refreshed });
 }
 
 function move(ctx: Ctx, entityId: string, at: { x: number; y: number }, rotated: boolean | undefined): void {

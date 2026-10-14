@@ -8,16 +8,24 @@ import { GameMenu } from './GameMenu';
 import { useStore } from './hooks';
 import { Hud } from './Hud';
 import { Market } from './Market';
+import { SettingsDialog } from './SettingsDialog';
 import { ConfirmDialog, Toasts, TooltipView } from './Popups';
 import { TitleScreen } from './TitleScreen';
 import { Toolbar } from './Toolbar';
 
 export function App({ gameApp }: { gameApp: GameApp }) {
   const { screen } = useStore(gameApp.store);
+  const { uiScale } = useStore(gameApp.settings);
   const session = gameApp.session;
+
+  useEffect(() => {
+    document.documentElement.style.setProperty('--ui-scale', String(uiScale));
+  }, [uiScale]);
+
   return (
     <>
       {screen === 'farm' && session ? <FarmUi gameApp={gameApp} session={session} /> : <TitleScreen gameApp={gameApp} />}
+      <SettingsDialog gameApp={gameApp} />
       <WelcomeBack gameApp={gameApp} />
       <AppNotice gameApp={gameApp} />
       {import.meta.env.DEV && <DebugInfo />}

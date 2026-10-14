@@ -3,9 +3,10 @@
  * offline catch-up, export/import and page-lifecycle handling (PLAN.md Phase 3).
  */
 import type { Content } from '../content';
-import { newGame, tick } from '../core';
-import type { GameState, PresetId } from '../core';
+import { newGame, tick, validateRules } from '../core';
+import type { GameState, PresetId, WorldRules } from '../core';
 import { LocalTransport } from '../net/LocalTransport';
+import type { SendResult } from '../net/Transport';
 import { decodeSave, encodeSave, loadSlot } from '../persistence';
 import type { EmergencyStore, SaveStore, SlotMeta } from '../persistence';
 import { downloadTextFile, safeFileName } from '../platform/files';
@@ -17,6 +18,8 @@ import { isNoteworthy, summarizeAway } from './awaySummary';
 import type { AwaySummary } from './awaySummary';
 import type { Session } from './session';
 import { rulesForNewFarm } from './session';
+import { createSettingsStore } from './settings';
+import type { SettingsStore } from './settings';
 import { createStore } from './store';
 import type { Store } from './store';
 import { createUiStore, initialUiState } from './uiState';
@@ -45,7 +48,11 @@ export interface AppState {
   /** Set when saves can't persist (IndexedDB unavailable). */
   storageWarning: string | null;
   busy: boolean;
+  /** Settings dialog tab, or null when closed. 'rules' needs an open farm. */
+  settingsOpen: SettingsTab | null;
 }
+
+export type SettingsTab = 'rules' | 'game';
 
 /** Lets the app start, pause and resume the Phaser renderer without depending on it. */
 export interface RendererHooks {
@@ -61,16 +68,21 @@ export interface GameAppOptions {
   renderer?: RendererHooks;
   now?: () => number;
   storageWarning?: string | null;
+  /** Device settings; defaults to an in-memory store (tests). */
+  settings?: SettingsStore;
 }
 
 export interface NewFarmOptions {
   farmName: string;
   playerName: string;
   preset: PresetId;
+  /** Customised rules from the new-farm form; overrides `preset` when given. */
+  rules?: WorldRules;
 }
 
 export class GameApp {
   readonly store: Store<AppState>;
+  readonly settings: SettingsStore;
   session: Session | null = null;
   private readonly o: GameAppOptions;
   private readonly now: () => number;
@@ -83,6 +95,7 @@ export class GameApp {
   constructor(options: GameAppOptions) {
     this.o = options;
     this.now = options.now ?? (() => Date.now());
+    this.settings = options.settings ?? createSettingsStore({ load: () => null, save: () => undefined });
     this.store = createStore<AppState>({
       screen: 'loading',
       slots: [],
@@ -94,6 +107,7 @@ export class GameApp {
       menuOpen: false,
       storageWarning: options.storageWarning ?? null,
       busy: false,
+      settingsOpen: null,
     });
   }
 
@@ -126,7 +140,13 @@ export class GameApp {
       const now = this.now();
       const farmName = options.farmName.trim() || 'My Farm';
       const playerName = options.playerName.trim() || 'Farmer';
-      const state = newGame({ farmName, playerName, realNow: now, rules: rulesForNewFarm(options.preset) }, this.o.content);
+      let rules = rulesForNewFarm(options.preset);
+      if (options.rules) {
+        const checked = validateRules(options.rules);
+        if (!checked.ok) throw new Error(`Those rules aren't valid: ${checked.error}`);
+        rules = checked.rules;
+      }
+      const state = newGame({ farmName, playerName, realNow: now, rules }, this.o.content);
       const slotId = makeSlotId(now);
       const meta = metaFor(slotId, state, now, now, 0);
       await this.o.saves.write(slotId, encodeSave(state, now), meta);
@@ -169,7 +189,7 @@ export class GameApp {
       }
       this.o.renderer?.pause();
       await this.refreshSlots();
-      this.store.set({ screen: 'title', slotId: null, menuOpen: false, welcome: null });
+      this.store.set({ screen: 'title', slotId: null, menuOpen: false, welcome: null, settingsOpen: null });
     });
   }
 
@@ -240,6 +260,24 @@ export class GameApp {
     return slotId;
   }
 
+  // ------------------------------------------------------------------ rules & settings
+
+  /** Applies new World Rules to the open farm (through the transport, like any other change). */
+  applyRules(rules: WorldRules): SendResult {
+    if (!this.session) return { ok: false, error: { code: 'unknown_farm', message: 'No farm is open.' } };
+    const result = this.session.transport.send({ type: 'setRules', rules });
+    if (!result.ok) this.notify(result.error.message, 'error');
+    return result;
+  }
+
+  openSettings(tab: SettingsTab): void {
+    this.store.set({ settingsOpen: tab === 'rules' && !this.session ? 'game' : tab, menuOpen: false });
+  }
+
+  closeSettings(): void {
+    this.store.set({ settingsOpen: null });
+  }
+
   // ------------------------------------------------------------------ small UI actions
 
   dismissWelcome(): void {
@@ -263,7 +301,7 @@ export class GameApp {
   private enterFarm(slotId: string, state: GameState, meta: SlotMeta, welcome: AwaySummary | null, backupOnFirstWrite = true): void {
     if (!this.transport) {
       this.transport = new LocalTransport(state, this.o.content, this.now);
-      this.session = { transport: this.transport, ui: createUiStore() };
+      this.session = { transport: this.transport, ui: createUiStore(), settings: this.settings };
       this.o.renderer?.start(this.session);
     } else {
       this.session!.ui.set(initialUiState());

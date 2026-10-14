@@ -6,3 +6,4 @@ export * from './migrations';
 export * from './SaveStore';
 export * from './schema';
 export * from './serialize';
+export * from './settingsStorage';

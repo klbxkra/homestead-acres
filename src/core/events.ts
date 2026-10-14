@@ -12,4 +12,6 @@ export type GameEvent =
   | { type: 'sold'; entityId: EntityId; refund: number }
   | { type: 'moved'; entityId: EntityId; x: number; y: number; rotated: boolean }
   | { type: 'xpGained'; playerId: PlayerId; amount: number }
-  | { type: 'levelUp'; playerId: PlayerId; level: number; cashReward: number };
+  | { type: 'levelUp'; playerId: PlayerId; level: number; cashReward: number }
+  /** `refreshed`: ripe crops given a fresh ripe window so the change didn't wither them instantly. */
+  | { type: 'rulesChanged'; refreshed: number };

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { GameApp } from '../../src/app/GameApp';
 import { defaultContent } from '../../src/content';
-import { HOUR_MS } from '../../src/core';
+import { HOUR_MS, rulesForPreset } from '../../src/core';
 import { createEmergencyStore, MemorySaveStore } from '../../src/persistence';
 import { T0 } from '../core/harness';
 
@@ -147,6 +147,42 @@ describe('GameApp', () => {
     const after = await saves.read(slotId);
     expect(after!.backups).toHaveLength(backupsBefore);
     expect(after!.backups).not.toContainEqual(damaged);
+  });
+
+  it('starts a farm with customised rules, and refuses invalid ones', async () => {
+    const { app } = makeApp();
+    await app.init();
+    await app.newFarm({ farmName: 'Bad', playerName: 'P', preset: 'classic', rules: { ...rulesForPreset('classic'), timeScale: -5 } });
+    expect(app.store.get().screen).toBe('title');
+    expect(app.store.get().notice?.kind).toBe('error');
+
+    const custom = { ...rulesForPreset('classic'), preset: 'custom' as const, startingCoins: 5000, coinYield: 3 };
+    await app.newFarm({ farmName: 'Rich', playerName: 'P', preset: 'classic', rules: custom });
+    expect(player(app).coins).toBe(5000);
+    expect(app.session!.transport.getState().rules.coinYield).toBe(3);
+  });
+
+  it('applies rule changes to the open farm and saves them', async () => {
+    const { app, saves } = makeApp();
+    await app.newFarm({ farmName: 'F', playerName: 'P', preset: 'classic' });
+    expect(app.applyRules({ ...rulesForPreset('relaxed') }).ok).toBe(true);
+    expect(app.applyRules({ ...rulesForPreset('relaxed'), xpGain: -1 }).ok).toBe(false);
+    expect(app.store.get().notice?.kind).toBe('error');
+    await app.exitToTitle();
+    const reopened = await saves.read(app.store.get().slots[0]!.slotId);
+    expect((reopened!.main as { state: { rules: { preset: string } } }).state.rules.preset).toBe('relaxed');
+  });
+
+  it('only offers the rules tab while a farm is open', async () => {
+    const { app } = makeApp();
+    await app.init();
+    app.openSettings('rules');
+    expect(app.store.get().settingsOpen).toBe('game');
+    await app.newFarm({ farmName: 'F', playerName: 'P', preset: 'classic' });
+    app.openSettings('rules');
+    expect(app.store.get().settingsOpen).toBe('rules');
+    await app.exitToTitle();
+    expect(app.store.get().settingsOpen).toBeNull();
   });
 
   it('deletes farms, but not the one that is open', async () => {

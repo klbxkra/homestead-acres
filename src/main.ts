@@ -4,7 +4,8 @@ import { GameApp } from './app/GameApp';
 import type { RendererHooks } from './app/GameApp';
 import { defaultContent } from './content';
 import { createGame, farmScene } from './game/createGame';
-import { createEmergencyStore, IdbSaveStore, MemorySaveStore } from './persistence';
+import { createSettingsStore } from './app/settings';
+import { createEmergencyStore, IdbSaveStore, localSettingsPersistence, MemorySaveStore } from './persistence';
 import type { SaveStore } from './persistence';
 import { suppressBrowserGestures, whenViewportReady } from './platform/device';
 import { App } from './ui/App';
@@ -53,7 +54,14 @@ async function openSaveStore(): Promise<{ saves: SaveStore; warning: string | nu
 }
 
 const { saves, warning } = await openSaveStore();
-const gameApp = new GameApp({ saves, emergency: createEmergencyStore(), content: defaultContent, renderer, storageWarning: warning });
+const gameApp = new GameApp({
+  saves,
+  emergency: createEmergencyStore(),
+  content: defaultContent,
+  renderer,
+  storageWarning: warning,
+  settings: createSettingsStore(localSettingsPersistence()),
+});
 gameApp.attachLifecycle();
 render(h(App, { gameApp }), uiRoot);
 await gameApp.init();

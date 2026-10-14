@@ -7,7 +7,9 @@ export type Command =
   | { type: 'harvest'; x: number; y: number }
   | { type: 'buy'; itemId: string; x: number; y: number; rotated?: boolean }
   | { type: 'sell'; entityId: EntityId }
-  | { type: 'move'; entityId: EntityId; x: number; y: number; rotated?: boolean };
+  | { type: 'move'; entityId: EntityId; x: number; y: number; rotated?: boolean }
+  /** Replace the world rules. Untrusted input: validated by the reducer. */
+  | { type: 'setRules'; rules: unknown };
 
 export type CommandType = Command['type'];
 

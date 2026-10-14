@@ -79,7 +79,8 @@ D:\Farmville
 │  │  ├─ GameApp.ts         # farm list, new/open/exit/delete, export/import, clock tick, lifecycle
 │  │  ├─ Autosaver.ts       # when to save (debounce, interval, hide, pagehide emergency copy)
 │  │  ├─ awaySummary.ts     # "while you were away" counts
-│  │  ├─ session.ts         # Session type (transport + UI store), new-farm rules, dev URL options
+│  │  ├─ session.ts         # Session type (transport + UI store + settings), new-farm rules, dev URL options
+│  │  ├─ settings.ts        # per-device settings (UI size, pop-ups, confirmations, hover info, vibration)
 │  │  ├─ store.ts           # tiny observable store
 │  │  └─ uiState.ts         # tool, seed, held item, paint mode, menus, tooltip, toasts, confirm
 │  ├─ net/                  # co-op seam (local-only for now)
@@ -349,7 +350,7 @@ Toolchain: Node 24 LTS, Vite 8, TypeScript 6, Vitest 5, ESLint 10, Phaser 3.90, 
 - [x] Commands go through `Transport` (`LocalTransport`); the clock ticks every 500ms while visible and catches up on resume
 - [x] **Verify**: in the browser with `?preset=speedrun`, a full loop with real mouse input: paint-plow 2 rows, choose seeds, paint-plant 14 plots, ripen, paint-harvest (+490 coins), level-ups, place, rotate, move, and sell decorations (with confirmation, 50% refund), invalid placement rejected. Phone landscape (740×360, touch emulation, 2× DPR): rail toolbar, side-sheet market; synthetic touch tap, long-press tooltip, pinch 3× and one-finger pan. 91 unit tests (gestures, tool logic, tooltips/formatting, transport). Perf: 22×22 fully planted farm syncs in about 0.2ms per tick and renders 972 sprites in about 1.7ms. *Pending (user): feel-test on a real phone.*
 
-Dev URL options (until the Phase 4 settings screen): `?preset=classic|relaxed|idle|speedrun`, `?timeScale=600`, `?coins=5000`.
+Dev URL options (still handy for testing; they only affect *new* farms): `?preset=classic|relaxed|idle|speedrun` pre-selects the preset, `?timeScale=600`, `?coins=5000`.
 
 ### Phase 3: Persistence (1–2 days) ✅ done 2026-10-15
 - [x] `SaveStore` interface, `IdbSaveStore` (via `idb`), `MemorySaveStore` (tests, and the fallback when the browser blocks storage, with a warning to export)
@@ -362,10 +363,25 @@ Dev URL options (until the Phase 4 settings screen): `?preset=classic|relaxed|id
 
 Found and fixed during verification: after restoring a backup, the first save rotated the *damaged* main copy into the backups, pushing out a good one; it is now skipped (`skipBackup`).
 
-### Phase 4: Settings and rates UI (1 day)
-- [ ] World Rules screen (presets plus sliders), per-save, with JSON import/export
-- [ ] Gameplay settings (instant actions, sound, UI scale, haptics)
-- [ ] **Verify**: changing rules immediately affects new and existing timers as designed; settings persist
+### Phase 4: Settings and rates UI (1 day) ✅ done 2026-10-15
+- [x] `setRules` command (validated in core by `validateRules` against `RULE_LIMITS`, owner-only like every command, saved with the farm). When rules change:
+  - **Game speed:** applies from that moment (the clock is advanced under the old speed first).
+  - **Grow times:** apply to new plantings.
+  - **Withering:** follows the current rules, but a change never withers a ripe crop on the spot. Crops that would instantly wither get a fresh ripe window starting now, and the player is told how many.
+- [x] World Rules editor (Settings → World rules, from the in-game ☰ menu): presets, sliders with labelled stops for every implemented rate, offline mode, withering, keep-plowed, per-crop/per-decoration overrides table, rules JSON export/import. Draft + Apply/Undo. The same editor appears in the new-farm form behind "Customize rules", with starting coins/cash.
+- [x] Device settings (Settings → Game, also on the farm list; localStorage via `persistence/settingsStorage.ts`): interface size (4 steps), coin/XP pop-ups, ask before selling, info on hover, vibration.
+- [ ] Deferred: *instant actions* and *sound* settings ship with the action queue and audio (Phase 7). Tree/animal/fuel/collectible/AI-neighbour rules exist in `WorldRules` but are hidden from the editor until those features exist (Phases 5–6).
+- [x] **Verify**:
+  - **New farm with custom rules (in the browser):** ×60 speed, withering off, 5,000 coins and a 1h strawberry override, all set through the UI. The farm got exactly those, and the market showed 1m / 24m.
+  - **Rule change on a live farm:** with a strawberry ripe for 71 game minutes, withering was switched on through Settings. The crop stayed ripe with a fresh 60-minute window, and the toast reported it.
+  - **Device settings:** interface size Large and pop-ups off applied instantly and survived a reload.
+  - **Tests:** 158 unit tests, covering rules validation (types, ranges, enums, prototype keys, limits), preset matching, every `setRules` timing rule, settings persistence/corruption, slider stops and labels, and app flows. A mutation check of the refresh and validation logic was caught.
+
+Found and fixed during verification:
+- `zoom`-scaled panels overflowed narrow screens (viewport sizes are now divided by the scale).
+- The view drifted after a canvas resize, because the scroll was kept instead of the centre.
+- On tall screens the farm was pinned to the top (camera bounds are now never smaller than the view).
+- The HUD overflowed narrow desktop windows (the title chip is hidden below 820px).
 
 ### Phase 5: Content depth (1.5–2 weeks)
 - [ ] Trees, animals (and animal buildings), decorations

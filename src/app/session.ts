@@ -1,12 +1,14 @@
 import { PRESET_IDS, rulesForPreset } from '../core';
 import type { PresetId, WorldRules } from '../core';
 import type { Transport } from '../net/Transport';
+import type { SettingsStore } from './settings';
 import type { UiStore } from './uiState';
 
 /** What the farm renderer and in-game UI work with while a farm is open. */
 export interface Session {
   transport: Transport;
   ui: UiStore;
+  settings: SettingsStore;
 }
 
 /**

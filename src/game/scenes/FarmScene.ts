@@ -4,7 +4,7 @@ import { cancelTool, PAINT_TOOLS, selectTool, toast } from '../../app/uiState';
 import type { UiState } from '../../app/uiState';
 import { entityAt, footprintOf, itemSize, lookup, placementProblem } from '../../core';
 import type { Command, Entity, FarmState, GameEvent, GameState } from '../../core';
-import { renderPixelRatio } from '../../platform/device';
+import { renderPixelRatio, vibrate } from '../../platform/device';
 import { describeTile } from '../../ui/format';
 import { decorationArt } from '../art/artData';
 import { decorationOrigin, ensureDecorationTexture, generateTextures, TEX_SCALE } from '../art/textures';
@@ -50,6 +50,8 @@ export class FarmScene extends Phaser.Scene {
   private lastPaintPoint: Pt | null = null;
   private lastActionTile: Tile | null = null;
   private inputEnabled = true;
+  /** Haptics only make sense for finger input. */
+  private lastPointerWasTouch = false;
   private keyboard!: KeyboardInput;
   private readonly cleanups: Array<() => void> = [];
 
@@ -141,10 +143,23 @@ export class FarmScene extends Phaser.Scene {
     }
   }
 
-  /** Called by the game shell whenever the canvas is resized for a new device pixel ratio. */
-  setPixelRatio(ratio: number): void {
+  /**
+   * Called by the game shell after every canvas resize (window resize, rotation,
+   * pixel-ratio change). `keepCenter` is the world point that was in the middle of
+   * the screen before, so the view doesn't drift when the canvas changes size.
+   */
+  setPixelRatio(ratio: number, keepCenter?: Pt): void {
     this.pixelRatio = ratio;
-    this.cameras.main.setZoom(this.userZoom * ratio);
+    const cam = this.cameras.main;
+    cam.setZoom(this.userZoom * ratio);
+    this.updateCameraBounds();
+    if (keepCenter) cam.centerOn(keepCenter.x, keepCenter.y);
+  }
+
+  /** World point currently at the centre of the screen. */
+  screenCenterWorld(): Pt {
+    const cam = this.cameras.main;
+    return { x: cam.scrollX + cam.width / 2, y: cam.scrollY + cam.height / 2 };
   }
 
   // ---------------------------------------------------------------- state -> views
@@ -199,12 +214,23 @@ export class FarmScene extends Phaser.Scene {
     g.closePath();
     g.strokePath();
 
-    this.cameras.main.setBounds(
-      b.left - CAMERA_MARGIN,
-      b.top - CAMERA_MARGIN,
-      b.right - b.left + CAMERA_MARGIN * 2,
-      b.bottom - b.top + CAMERA_MARGIN * 2,
-    );
+    this.updateCameraBounds();
+  }
+
+  /**
+   * Pan limits: the farm plus a margin, but never smaller than the visible area.
+   * (When the view is bigger than the bounds, Phaser pins it to the top-left
+   * instead of centring it, which left the farm at the top of tall screens.)
+   */
+  private updateCameraBounds(): void {
+    if (!this.farmSize.w) return;
+    const cam = this.cameras.main;
+    const b = farmBounds(this.farmSize.w, this.farmSize.h);
+    const cx = (b.left + b.right) / 2;
+    const cy = (b.top + b.bottom) / 2;
+    const halfW = Math.max((b.right - b.left) / 2 + CAMERA_MARGIN, cam.width / cam.zoom / 2);
+    const halfH = Math.max((b.bottom - b.top) / 2 + CAMERA_MARGIN, cam.height / cam.zoom / 2);
+    cam.setBounds(cx - halfW, cy - halfH, halfW * 2, halfH * 2);
   }
 
   /** Initial zoom that shows the whole farm, centred in the space the HUD leaves free. */
@@ -217,6 +243,7 @@ export class FarmScene extends Phaser.Scene {
     const fit = Math.min((cssW - railCss) / (b.right - b.left + 40), cssH / (b.bottom - b.top + 120));
     this.userZoom = Phaser.Math.Clamp(fit, MIN_ZOOM, 1.4);
     this.cameras.main.setZoom(this.userZoom * this.pixelRatio);
+    this.updateCameraBounds();
     this.cameras.main.centerOn(railCss / 2 / this.userZoom, (b.top + b.bottom) / 2 - 10 / this.userZoom);
   }
 
@@ -243,6 +270,7 @@ export class FarmScene extends Phaser.Scene {
     const before = this.toWorld(p);
     this.userZoom = Phaser.Math.Clamp(zoom, MIN_ZOOM, MAX_ZOOM);
     cam.setZoom(this.userZoom * this.pixelRatio);
+    this.updateCameraBounds();
     const sx = p.x * this.pixelRatio;
     const sy = p.y * this.pixelRatio;
     cam.setScroll(before.x - cam.width / 2 - (sx - cam.width / 2) / cam.zoom, before.y - cam.height / 2 - (sy - cam.height / 2) / cam.zoom);
@@ -260,6 +288,7 @@ export class FarmScene extends Phaser.Scene {
   // ---------------------------------------------------------------- input
 
   private onTap(p: Pt, info: PressInfo): void {
+    this.lastPointerWasTouch = info.pointerType === 'touch';
     if (info.button === 2) return cancelTool(this.ui);
     if (this.ui.get().tooltip && info.pointerType !== 'mouse') {
       this.hideTooltip(); // first tap after a long-press just dismisses the info bubble
@@ -277,7 +306,7 @@ export class FarmScene extends Phaser.Scene {
     this.drawGhost();
     // Mouse users get info on hover for anything that's not bare grass.
     const onEntity = entityAt(this.farm, tile.x, tile.y, this.transport.content);
-    if (onEntity && !this.holdingSomething()) this.showTooltip(tile, p, false);
+    if (onEntity && !this.holdingSomething() && this.session.settings.get().hoverTooltips) this.showTooltip(tile, p, false);
     else this.hideTooltip();
   }
 
@@ -290,6 +319,7 @@ export class FarmScene extends Phaser.Scene {
   }
 
   private chooseDragMode(info: PressInfo): DragMode {
+    this.lastPointerWasTouch = info.pointerType === 'touch';
     if (info.button === 1 || info.button === 2) return 'pan';
     const ui = this.ui.get();
     if (info.pointerType !== 'mouse' && this.holdingSomething()) return 'ghost';
@@ -374,7 +404,7 @@ export class FarmScene extends Phaser.Scene {
     switch (outcome.kind) {
       case 'command': {
         const { command, confirm } = outcome;
-        if (confirm) {
+        if (confirm && this.session.settings.get().confirmSell) {
           this.ui.set({ confirm: { message: confirm, confirmLabel: 'Sell', onConfirm: () => this.send(command, tile) } });
         } else {
           this.send(command, tile);
@@ -406,6 +436,7 @@ export class FarmScene extends Phaser.Scene {
       return false;
     }
     if (command.type === 'move') this.ui.set({ movingEntityId: null, rotated: false });
+    if (this.lastPointerWasTouch && this.session.settings.get().haptics) vibrate(command.type === 'harvest' ? 15 : 8);
     return true;
   }
 
@@ -463,6 +494,15 @@ export class FarmScene extends Phaser.Scene {
         case 'levelUp':
           toast(this.ui, `Level ${e.level}!${e.cashReward ? ` +${e.cashReward} Farm Cash` : ''}`, 'success');
           break;
+        case 'rulesChanged':
+          toast(
+            this.ui,
+            e.refreshed > 0
+              ? `Rules updated. ${e.refreshed} ripe ${e.refreshed === 1 ? 'crop got' : 'crops got'} a fresh harvest window.`
+              : 'Rules updated.',
+            'success',
+          );
+          break;
         case 'moved':
           break;
       }
@@ -470,6 +510,7 @@ export class FarmScene extends Phaser.Scene {
   }
 
   private float(p: Pt, text: string, kind: 'coins' | 'cost' | 'xp', delay = 0): void {
+    if (!this.session.settings.get().floatingNumbers) return;
     floatText(this, p.x, p.y, text, kind, delay);
   }
 

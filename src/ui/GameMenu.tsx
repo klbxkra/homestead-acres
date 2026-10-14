@@ -43,6 +43,9 @@ export function GameMenu({ gameApp }: { gameApp: GameApp }) {
             <button type="button" class="menu-item" role="menuitem" onClick={() => void gameApp.saveNow()}>
               💾 Save now
             </button>
+            <button type="button" class="menu-item" role="menuitem" onClick={() => gameApp.openSettings('rules')}>
+              ⚙️ Settings &amp; rules
+            </button>
             <button
               type="button"
               class="menu-item"

@@ -40,9 +40,11 @@ export function createGame(parent: HTMLElement, session: Session): Phaser.Game {
     const r = renderPixelRatio();
     const size = viewportSize();
     if (size.width === 0 || size.height === 0) return; // hidden tab; keep the last good size
+    const scene = farmScene(game);
+    const center = scene?.screenCenterWorld();
     game.scale.resize(size.width * r, size.height * r);
     game.scale.setZoom(1 / r);
-    farmScene(game)?.setPixelRatio(r);
+    scene?.setPixelRatio(r, center);
   };
 
   game.events.once(Phaser.Core.Events.READY, resize);

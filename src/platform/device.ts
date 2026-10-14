@@ -50,6 +50,15 @@ export function onViewportResize(callback: () => void): () => void {
   };
 }
 
+/** Short haptic tick where supported (Android Chrome; iOS Safari ignores it). */
+export function vibrate(ms: number): void {
+  try {
+    navigator.vibrate?.(ms);
+  } catch {
+    // some browsers throw if called without a recent user gesture
+  }
+}
+
 /** Stop the browser from hijacking game gestures (context menu, iOS pinch-zoom of the page). */
 export function suppressBrowserGestures(): void {
   window.addEventListener('contextmenu', (e) => e.preventDefault());

@@ -1,21 +1,17 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { formatAgo } from '../app/GameApp';
 import type { GameApp } from '../app/GameApp';
-import { defaultPresetFromQuery } from '../app/session';
+import { defaultPresetFromQuery, rulesForNewFarm } from '../app/session';
 import { GAME_TITLE } from '../config';
+import { defaultContent } from '../content';
 import { PRESET_IDS } from '../core';
-import type { PresetId } from '../core';
+import type { PresetId, WorldRules } from '../core';
+import { PRESET_INFO } from './presets';
+import { RulesEditor } from './RulesEditor';
 import type { SlotMeta } from '../persistence';
 import { readTextFile } from '../platform/files';
 import { formatDuration, formatNumber } from './format';
 import { useStore } from './hooks';
-
-const PRESET_INFO: Record<PresetId, { name: string; blurb: string }> = {
-  classic: { name: 'Classic', blurb: 'The original pace. Crops wither if you leave them too long.' },
-  relaxed: { name: 'Relaxed', blurb: 'No withering and double coins from harvests.' },
-  idle: { name: 'Idle', blurb: 'No withering, faster crops, and timers pause while the game is closed.' },
-  speedrun: { name: 'Speed run', blurb: 'Time runs 600× faster with 5× XP. Good for trying things out.' },
-};
 
 export function TitleScreen({ gameApp }: { gameApp: GameApp }) {
   const app = useStore(gameApp.store);
@@ -46,6 +42,9 @@ export function TitleScreen({ gameApp }: { gameApp: GameApp }) {
     <div class="title-screen interactive">
       <div class="title-inner">
         <header class="title-header">
+          <button type="button" class="title-settings" aria-label="Settings" title="Settings" onClick={() => gameApp.openSettings('game')}>
+            ⚙️
+          </button>
           <h1>{GAME_TITLE}</h1>
           <p>Plow, plant and harvest your way to the best farm in the county.</p>
         </header>
@@ -137,10 +136,17 @@ function NewFarmForm({ gameApp, busy, canCancel, onCancel }: { gameApp: GameApp;
   const [farmName, setFarmName] = useState('Sunny Acres');
   const [playerName, setPlayerName] = useState('Farmer');
   const [preset, setPreset] = useState<PresetId>(defaultPresetFromQuery);
+  /** Set once the player opens "Customize rules"; then it's what the farm starts with. */
+  const [custom, setCustom] = useState<WorldRules | null>(null);
+
+  const pickPreset = (id: PresetId) => {
+    setPreset(id);
+    if (custom) setCustom(rulesForNewFarm(id));
+  };
 
   const submit = (e: Event) => {
     e.preventDefault();
-    void gameApp.newFarm({ farmName, playerName, preset });
+    void gameApp.newFarm({ farmName, playerName, preset, ...(custom ? { rules: custom } : {}) });
   };
 
   return (
@@ -158,14 +164,35 @@ function NewFarmForm({ gameApp, busy, canCancel, onCancel }: { gameApp: GameApp;
       </div>
       <fieldset class="presets">
         <legend>Game rules (you can fine-tune these later)</legend>
-        {PRESET_IDS.map((id) => (
-          <label key={id} class={`preset ${preset === id ? 'selected' : ''}`}>
-            <input type="radio" name="preset" value={id} checked={preset === id} onChange={() => setPreset(id)} />
-            <span class="preset-name">{PRESET_INFO[id].name}</span>
-            <span class="preset-blurb">{PRESET_INFO[id].blurb}</span>
-          </label>
-        ))}
+        {PRESET_IDS.map((id) => {
+          const selected = custom ? custom.preset === id : preset === id;
+          return (
+            <label key={id} class={`preset ${selected ? 'selected' : ''}`}>
+              <input type="radio" name="preset" value={id} checked={selected} onChange={() => pickPreset(id)} />
+              <span class="preset-name">{PRESET_INFO[id].name}</span>
+              <span class="preset-blurb">{PRESET_INFO[id].blurb}</span>
+            </label>
+          );
+        })}
       </fieldset>
+      {custom ? (
+        <div class="new-farm-rules">
+          <div class="new-farm-rules-head">
+            <b>{custom.preset === 'custom' ? 'Custom rules' : `${PRESET_INFO[custom.preset].name} rules`}</b>
+            <button type="button" class="link-btn" onClick={() => setCustom(null)}>
+              Use the preset as-is
+            </button>
+          </div>
+          <RulesEditor rules={custom} onChange={setCustom} mode="new" content={defaultContent} onError={(m) => gameApp.notify(m, 'error')} />
+        </div>
+      ) : (
+        <p class="customize-line">
+          <button type="button" class="link-btn" onClick={() => setCustom(rulesForNewFarm(preset))}>
+            ⚙️ Customize rules
+          </button>{' '}
+          <span class="muted">game speed, withering, prices, rewards and more</span>
+        </p>
+      )}
       <div class="title-actions">
         {canCancel && (
           <button type="button" class="btn" onClick={onCancel}>
