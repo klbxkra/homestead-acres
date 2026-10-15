@@ -1,0 +1,10 @@
+[
+  { "id": "plow_master", "name": "Plow Master", "counter": "plowed", "description": "Plow plots", "tiers": [50, 250, 1000, 5000] },
+  { "id": "harvest_hero", "name": "Harvest Hero", "counter": "cropsHarvested", "description": "Harvest crops", "tiers": [50, 300, 1500, 7500] },
+  { "id": "orchard_keeper", "name": "Orchard Keeper", "counter": "treesHarvested", "description": "Harvest trees", "tiers": [10, 50, 200, 1000] },
+  { "id": "animal_whisperer", "name": "Animal Whisperer", "counter": "animalsCollected", "description": "Collect from animals", "tiers": [10, 50, 200, 1000] },
+  { "id": "decorator", "name": "Decorator", "counter": "itemsBought", "description": "Buy decorations, trees, animals and buildings", "tiers": [5, 25, 100, 400] },
+  { "id": "money_maker", "name": "Money Maker", "counter": "coinsEarned", "description": "Earn coins", "tiers": [5000, 50000, 500000, 5000000] },
+  { "id": "crop_expert", "name": "Crop Expert", "counter": "cropsMastered", "description": "Master crops (3 stars)", "tiers": [1, 5, 15, 30] },
+  { "id": "collector", "name": "Collector", "counter": "collectionsCompleted", "description": "Complete collections", "tiers": [1, 5, 20, 50] }
+]

@@ -9,6 +9,8 @@ export const STOPS = {
   offlineCapHours: [1, 2, 4, 8, 12, 24, 48, 72, 168],
   startingCoins: [0, 100, 200, 500, 1000, 2000, 5000, 10_000, 100_000],
   startingCash: [0, 5, 10, 25, 50, 100, 1000],
+  fuelRegenPerHour: [0, 0.25, 0.5, 1, 2, 5, 10],
+  masteryGoal: [0.1, 0.25, 0.5, 0.75, 1, 1.5, 2, 3],
 } as const satisfies Record<string, readonly number[]>;
 
 /** Index of the stop closest to `value` (values from imported rules may fall between stops). */

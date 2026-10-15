@@ -4,8 +4,8 @@ import {
   cropHarvestCoins,
   cropPlantXp,
   cropSeedCost,
-  decorationCost,
-  decorationRefund,
+  itemCost as decorationCost,
+  itemRefund,
   plowCost,
   plowXp,
   rulesForPreset,
@@ -14,7 +14,8 @@ import type { WorldRules } from '../../src/core';
 
 const rules = (patch: Partial<WorldRules> = {}): WorldRules => ({ ...rulesForPreset('classic'), ...patch });
 const strawberry = defaultContent.crops['strawberry']!;
-const hayBale = defaultContent.decorations['hay_bale']!;
+const hayBale = defaultContent.placeables['hay_bale']!;
+const decorationRefund = itemRefund;
 
 describe('economy', () => {
   it('uses base values under classic rules', () => {

@@ -17,7 +17,16 @@ const entityBase = { id, ownerId: id, x: int, y: int };
 
 const plot = z.object({ ...entityBase, kind: z.literal('plot'), plowed: z.boolean(), crop: cropInstance.nullable() });
 const decoration = z.object({ ...entityBase, kind: z.literal('decoration'), itemId: id, rotated: z.boolean() });
-const entity = z.discriminatedUnion('kind', [plot, decoration]);
+const tree = z.object({ ...entityBase, kind: z.literal('tree'), itemId: id, readyAt: num });
+const animal = z.object({ ...entityBase, kind: z.literal('animal'), itemId: id, readyAt: num });
+const building = z.object({
+  ...entityBase,
+  kind: z.literal('building'),
+  itemId: id,
+  rotated: z.boolean(),
+  housed: z.array(z.object({ itemId: id, readyAt: num })).max(1000),
+});
+const entity = z.discriminatedUnion('kind', [plot, decoration, tree, animal, building]);
 
 const farm = z.object({
   id,
@@ -35,7 +44,15 @@ const player = z.object({
   cash: num,
   xp: num,
   level: int.min(1),
-  stats: z.object({ harvested: z.record(z.string(), num), plowed: num }),
+  stats: z.object({ harvested: z.record(z.string(), num), counters: z.record(z.string(), num) }),
+  masteryStars: z.record(z.string(), int.min(0).max(3)),
+  ribbons: z.record(z.string(), int.min(0).max(4)),
+  collectibles: z.record(z.string(), int.nonnegative()),
+  giftBox: z.record(z.string(), int.nonnegative()),
+  storage: z.record(z.string(), int.nonnegative()),
+  fuel: z.object({ amount: num, updatedAt: num }),
+  vehicles: z.array(id).max(100),
+  daily: z.object({ lastClaimRealAt: num.nullable(), streak: int.nonnegative() }),
 });
 
 const override = z.object({
@@ -60,6 +77,7 @@ const rules = z.object({
   farmCashEarnRate: num.nonnegative(),
   fuelRegenPerHour: num.nonnegative(),
   collectibleDropRate: num.nonnegative(),
+  masteryGoal: num.positive(),
   offlineProgress: z.enum(['full', 'capped', 'paused']),
   offlineCapHours: num.nonnegative(),
   aiNeighborCount: int.nonnegative(),

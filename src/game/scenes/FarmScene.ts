@@ -1,20 +1,31 @@
 import Phaser from 'phaser';
 import type { Session } from '../../app/session';
-import { cancelTool, PAINT_TOOLS, selectTool, toast } from '../../app/uiState';
+import { cancelTool, PAINT_TOOLS, selectTool, startVehicle, toast } from '../../app/uiState';
 import type { UiState } from '../../app/uiState';
-import { entityAt, footprintOf, itemSize, lookup, placementProblem } from '../../core';
+import { entityAt, inventoryOf, itemSize, lookup, placementProblem } from '../../core';
 import type { Command, Entity, FarmState, GameEvent, GameState } from '../../core';
 import { renderPixelRatio, vibrate } from '../../platform/device';
 import { describeTile } from '../../ui/format';
 import { decorationArt } from '../art/artData';
-import { decorationOrigin, ensureDecorationTexture, generateTextures, TEX_SCALE } from '../art/textures';
+import {
+  animalKey,
+  decorationOrigin,
+  ensureDecorationTexture,
+  generateTextures,
+  TALL_TEX_CENTER_Y,
+  TALL_TEX_H,
+  TEX_SCALE,
+  treeKey,
+} from '../art/textures';
+
+const RIBBON_TIERS = ['Yellow', 'White', 'Red', 'Blue'];
 import { floatText } from '../fx/floatText';
 import { bindPointer } from '../input/bindPointer';
 import type { DragMode, PressInfo, Pt } from '../input/gestures';
 import { KeyboardInput } from '../input/keyboard';
 import { farmBounds, pickTile, tileToWorld, TILE_HEIGHT, TILE_WIDTH } from '../iso';
 import { resolvePaint, resolveTap } from '../tools/toolActions';
-import { createView, destroyView, DEPTH, setViewAlpha, updateView } from '../views/entityViews';
+import { createView, destroyView, DEPTH, setViewAlpha, updateView, viewMismatch } from '../views/entityViews';
 import type { EntityView } from '../views/entityViews';
 
 const MIN_ZOOM = 0.5;
@@ -173,7 +184,7 @@ export class FarmScene extends Phaser.Scene {
     for (const entity of Object.values(farm.entities)) {
       seen.add(entity.id);
       let view = this.views.get(entity.id);
-      if (!view || view.kind !== entity.kind) {
+      if (!view || viewMismatch(view, entity)) {
         if (view) destroyView(view);
         view = createView(this, entity);
         this.views.set(entity.id, view);
@@ -357,7 +368,7 @@ export class FarmScene extends Phaser.Scene {
   private onShortcut(key: string): void {
     if (!this.inputEnabled) return;
     const ui = this.ui;
-    const tools: Record<string, UiState['tool']> = { '1': 'multi', '2': 'plow', '3': 'seed', '4': 'harvest', '5': 'move', '6': 'sell' };
+    const tools: Record<string, UiState['tool']> = { '1': 'multi', '2': 'plow', '3': 'seed', '4': 'harvest', '5': 'move', '6': 'sell', '7': 'store' };
     const tool = tools[key];
     if (tool) {
       if (tool === 'seed' && !ui.get().seedId) ui.set({ marketOpen: true, marketTab: 'seeds' });
@@ -367,6 +378,17 @@ export class FarmScene extends Phaser.Scene {
     switch (key) {
       case 'escape':
         return cancelTool(ui);
+      case '8': {
+        const owned = this.transport.getState().players[this.transport.playerId]!.vehicles;
+        if (owned.length === 0) return ui.set({ marketOpen: true, marketTab: 'vehicles' });
+        const s = ui.get();
+        const i = s.tool === 'vehicle' && s.vehicleId ? owned.indexOf(s.vehicleId) : -1;
+        return startVehicle(ui, owned[(i + 1) % owned.length]!);
+      }
+      case 'i':
+        return ui.set((s) => ({ panel: s.panel === 'inventory' ? null : 'inventory' }));
+      case 'b':
+        return ui.set((s) => ({ panel: s.panel === 'book' ? null : 'book' }));
       case 'm':
         return ui.set((s) => ({ marketOpen: !s.marketOpen }));
       case 'p':
@@ -387,7 +409,13 @@ export class FarmScene extends Phaser.Scene {
     if (s.movingEntityId !== prev.movingEntityId) {
       for (const [id, view] of this.views) setViewAlpha(view, id === s.movingEntityId ? 0.35 : 1);
     }
-    if (s.tool !== prev.tool || s.movingEntityId !== prev.movingEntityId || s.placeItemId !== prev.placeItemId || s.rotated !== prev.rotated) {
+    if (
+      s.tool !== prev.tool ||
+      s.movingEntityId !== prev.movingEntityId ||
+      s.placeItemId !== prev.placeItemId ||
+      s.vehicleId !== prev.vehicleId ||
+      s.rotated !== prev.rotated
+    ) {
       this.drawGhost();
       this.drawHighlight();
     }
@@ -436,6 +464,12 @@ export class FarmScene extends Phaser.Scene {
       return false;
     }
     if (command.type === 'move') this.ui.set({ movingEntityId: null, rotated: false });
+    if (command.type === 'place') {
+      // Placed the last one from the gift box / storage: nothing left to hold.
+      const player = this.transport.getState().players[this.transport.playerId]!;
+      const left = lookup(inventoryOf(player, command.from), command.itemId) ?? 0;
+      if (left === 0) selectTool(this.ui, 'multi');
+    }
     if (this.lastPointerWasTouch && this.session.settings.get().haptics) vibrate(command.type === 'harvest' ? 15 : 8);
     return true;
   }
@@ -466,7 +500,13 @@ export class FarmScene extends Phaser.Scene {
     if (command) this.send(command, tile, true);
   }
 
+  private buildingItemId(entityId: string): string | undefined {
+    const e = lookup(this.farm.entities, entityId);
+    return e && e.kind !== 'plot' ? e.itemId : undefined;
+  }
+
   private playEvents(events: readonly GameEvent[]): void {
+    const content = this.transport.content;
     let stack = 0;
     const at = (tile: Tile | null) => {
       const t = tile ?? this.lastActionTile ?? { x: 0, y: 0 };
@@ -480,19 +520,67 @@ export class FarmScene extends Phaser.Scene {
           if (e.cost > 0) this.float(at(e), `-${e.cost}`, 'cost');
           break;
         case 'harvested':
+        case 'collected':
           if (e.coins > 0) this.float(at(e), `+${e.coins}`, 'coins');
           break;
         case 'placed':
-          if (e.cost > 0) this.float(at(this.lastActionTile), `-${e.cost}`, 'cost');
+          if (e.cost > 0) this.float(at(e), `-${e.cost}`, 'cost');
           break;
         case 'sold':
           if (e.refund > 0) this.float(at(this.lastActionTile), `+${e.refund}`, 'coins');
+          break;
+        case 'itemSold':
+          if (e.refund > 0) toast(this.ui, `Sold for ${e.refund.toLocaleString('en-US')} coins.`, 'success');
           break;
         case 'xpGained':
           this.float(at(this.lastActionTile), `+${formatXp(e.amount)} XP`, 'xp', 120);
           break;
         case 'levelUp':
           toast(this.ui, `Level ${e.level}!${e.cashReward ? ` +${e.cashReward} Farm Cash` : ''}`, 'success');
+          break;
+        case 'animalHoused': {
+          const name = lookup(content.animals, e.itemId)?.name ?? 'Animal';
+          const home = lookup(content.buildings, this.buildingItemId(e.buildingId) ?? '')?.name ?? 'building';
+          toast(this.ui, `${name} moved into the ${home}.`, 'success');
+          break;
+        }
+        case 'stored':
+          toast(this.ui, `${lookup(content.placeables, e.itemId)?.name ?? 'Item'} put in storage.`, 'info');
+          break;
+        case 'masteryStar': {
+          const crop = lookup(content.crops, e.cropId)?.name ?? e.cropId;
+          toast(this.ui, `${'★'.repeat(e.star)} ${crop} mastery! +${e.coins.toLocaleString('en-US')} coins`, 'success');
+          break;
+        }
+        case 'ribbonEarned': {
+          const ribbon = content.ribbons.find((r) => r.id === e.ribbonId);
+          toast(this.ui, `🎀 ${RIBBON_TIERS[e.tier - 1] ?? ''} ribbon: ${ribbon?.name ?? e.ribbonId}!`, 'success');
+          break;
+        }
+        case 'collectibleFound': {
+          const set = content.collections.find((c) => c.id === e.collectionId);
+          const item = set?.items.find((i) => i.id === e.collectibleId);
+          this.float(at(e), `✨ ${item?.name ?? 'Collectible'}`, 'xp', 200);
+          toast(this.ui, `Found a ${item?.name ?? 'collectible'} for ${set?.name ?? 'a collection'}!`, 'info');
+          break;
+        }
+        case 'collectionCompleted':
+          toast(this.ui, `Collection complete: ${content.collections.find((c) => c.id === e.collectionId)?.name}!`, 'success');
+          break;
+        case 'itemReceived':
+          toast(this.ui, `🎁 ${lookup(content.placeables, e.itemId)?.name ?? 'A gift'} added to your gift box.`, 'success');
+          break;
+        case 'vehicleBought':
+          toast(this.ui, `${lookup(content.vehicles, e.vehicleId)?.name} bought! Tap plots to drive it.`, 'success');
+          break;
+        case 'farmExpanded':
+          toast(this.ui, `Your farm is now ${e.size}×${e.size}!`, 'success');
+          break;
+        case 'refueled':
+          toast(this.ui, `Tank filled for ${e.cash} Farm Cash.`, 'success');
+          break;
+        case 'vehicleUsed':
+        case 'dailyBonus':
           break;
         case 'rulesChanged':
           toast(
@@ -532,36 +620,56 @@ export class FarmScene extends Phaser.Scene {
     g.strokePath();
   }
 
-  /** Footprint preview for placing or moving, green when it fits and red when it doesn't. */
+  /**
+   * Footprint preview: for placing or moving (green when it fits, red when it
+   * doesn't; animals over a matching building count as fitting), and the work
+   * area of the selected vehicle.
+   */
   private drawGhost(): void {
     const g = this.ghostShape.clear();
     this.ghostImage.setVisible(false);
     const t = this.ghostTile;
-    if (!t || !this.holdingSomething()) return;
-
     const ui = this.ui.get();
+    if (!t) return;
+
     const content = this.transport.content;
+    if (ui.tool === 'vehicle' && ui.vehicleId) {
+      const area = lookup(content.vehicles, ui.vehicleId)?.area ?? 1;
+      const center = tileToWorld(t.x + (area - 1) / 2, t.y + (area - 1) / 2);
+      g.fillStyle(0xffe082, 0.35);
+      g.lineStyle(2, 0xffca28, 1);
+      diamondPath(g, center.x, center.y, area, area);
+      g.fillPath();
+      g.strokePath();
+      return;
+    }
+    if (!this.holdingSomething()) return;
+
     const farm = this.farm;
     let itemId: string | null = null;
+    let rotated = ui.rotated;
     let size = { w: 1, h: 1 };
     let ignoreId: string | undefined;
 
     if (ui.tool === 'place' && ui.placeItemId) {
       itemId = ui.placeItemId;
-      size = itemSize(itemId, ui.rotated, content) ?? size;
+      size = itemSize(itemId, rotated, content) ?? size;
     } else if (ui.movingEntityId) {
       const entity: Entity | undefined = lookup(farm.entities, ui.movingEntityId);
       if (!entity) return;
       ignoreId = entity.id;
-      if (entity.kind === 'decoration') {
-        itemId = entity.itemId;
-        size = itemSize(itemId, ui.rotated, content) ?? size;
+      if (entity.kind === 'plot') {
+        size = { w: 1, h: 1 };
       } else {
-        size = { w: footprintOf(entity, content).w, h: footprintOf(entity, content).h };
+        itemId = entity.itemId;
+        if (entity.kind === 'tree' || entity.kind === 'animal') rotated = false;
+        size = itemSize(itemId, rotated, content) ?? size;
       }
     }
 
-    const fits = placementProblem(farm, { x: t.x, y: t.y, ...size }, content, ignoreId) === null;
+    const fits =
+      placementProblem(farm, { x: t.x, y: t.y, ...size }, content, ignoreId) === null ||
+      (itemId !== null && this.canHouseAt(itemId, t));
     const center = tileToWorld(t.x + (size.w - 1) / 2, t.y + (size.h - 1) / 2);
     g.fillStyle(fits ? 0x66bb6a : 0xef5350, 0.45);
     g.lineStyle(2, fits ? 0xc8e6c9 : 0xffcdd2, 1);
@@ -569,12 +677,27 @@ export class FarmScene extends Phaser.Scene {
     g.fillPath();
     g.strokePath();
 
-    if (itemId) {
-      const item = lookup(content.decorations, itemId);
-      const key = ensureDecorationTexture(this, itemId, item?.width ?? 1, item?.height ?? 1, ui.rotated);
-      const origin = decorationOrigin(size.w, size.h, decorationArt(itemId).height);
+    if (!itemId) return;
+    const item = lookup(content.placeables, itemId);
+    if (!item) return;
+    if (item.kind === 'tree' || item.kind === 'animal') {
+      const key = item.kind === 'tree' ? treeKey(itemId, false) : animalKey(itemId);
+      this.ghostImage.setTexture(key).setOrigin(0.5, TALL_TEX_CENTER_Y / TALL_TEX_H).setPosition(center.x, center.y).setVisible(true);
+    } else {
+      const key = ensureDecorationTexture(this, itemId, item.width, item.height, rotated);
+      const origin = decorationOrigin(size.w, size.h, decorationArt(itemId).height, itemId);
       this.ghostImage.setTexture(key).setOrigin(origin.x, origin.y).setPosition(center.x, center.y).setVisible(true);
     }
+  }
+
+  /** Would dropping this animal here move it into a building with room? */
+  private canHouseAt(itemId: string, t: Tile): boolean {
+    const content = this.transport.content;
+    if (!lookup(content.animals, itemId)) return false;
+    const target = entityAt(this.farm, t.x, t.y, content);
+    if (target?.kind !== 'building') return false;
+    const def = lookup(content.buildings, target.itemId);
+    return !!def && def.houses.includes(itemId) && target.housed.length < def.capacity;
   }
 
   private showTooltip(tile: Tile, p: Pt, includeGrass: boolean): void {

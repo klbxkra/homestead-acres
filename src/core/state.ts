@@ -5,7 +5,8 @@ import { rulesForPreset, DEFAULT_PRESET } from './rules';
 import type { WorldRules } from './rules';
 import { seedFromString } from './rng';
 
-export const SCHEMA_VERSION = 1;
+/** Bump with a step in persistence/migrations.ts whenever GameState changes shape. */
+export const SCHEMA_VERSION = 2;
 
 export interface Clock {
   /** Game-time ms. Starts equal to real time; runs faster with timeScale. All timers use this. */
@@ -43,7 +44,35 @@ export interface DecorationEntity extends EntityBase {
   rotated: boolean;
 }
 
-export type Entity = PlotEntity | DecorationEntity;
+/** Trees and animals produce on a cycle; readyAt is fixed when the cycle starts. They never wither. */
+export interface TreeEntity extends EntityBase {
+  kind: 'tree';
+  itemId: string;
+  readyAt: number;
+}
+
+export interface AnimalEntity extends EntityBase {
+  kind: 'animal';
+  itemId: string;
+  readyAt: number;
+}
+
+export interface HousedAnimal {
+  itemId: string;
+  readyAt: number;
+}
+
+export interface BuildingEntity extends EntityBase {
+  kind: 'building';
+  itemId: string;
+  rotated: boolean;
+  /** Animals living inside (coops, dairies, pens). Collected all at once. */
+  housed: HousedAnimal[];
+}
+
+export type Entity = PlotEntity | DecorationEntity | TreeEntity | AnimalEntity | BuildingEntity;
+/** Entities that come from the item catalogue (everything except plots). */
+export type ItemEntity = DecorationEntity | TreeEntity | AnimalEntity | BuildingEntity;
 
 export interface FarmState {
   id: FarmId;
@@ -55,8 +84,22 @@ export interface FarmState {
 }
 
 export interface PlayerStats {
+  /** Crop id -> times harvested (drives mastery). */
   harvested: Record<string, number>;
-  plowed: number;
+  /** Named counters that drive ribbons: plowed, cropsHarvested, coinsEarned, ... */
+  counters: Record<string, number>;
+}
+
+/** Fuel regenerates over game time; stored as a value at a moment and computed lazily. */
+export interface FuelState {
+  amount: number;
+  updatedAt: number;
+}
+
+export interface DailyBonusState {
+  /** Real (wall-clock) ms of the last claim; streaks use real days even at high game speed. */
+  lastClaimRealAt: number | null;
+  streak: number;
 }
 
 export interface PlayerState {
@@ -68,6 +111,20 @@ export interface PlayerState {
   xp: number;
   level: number;
   stats: PlayerStats;
+  /** Crop id -> mastery stars already rewarded (0-3). */
+  masteryStars: Record<string, number>;
+  /** Ribbon id -> tier reached (0-4). */
+  ribbons: Record<string, number>;
+  /** Collectible id -> count. */
+  collectibles: Record<string, number>;
+  /** Rewards and gifts waiting to be placed. Unlimited. */
+  giftBox: Record<string, number>;
+  /** Items put away from the farm. Limited by storage capacity. */
+  storage: Record<string, number>;
+  fuel: FuelState;
+  /** Owned vehicle ids. */
+  vehicles: string[];
+  daily: DailyBonusState;
 }
 
 export interface GameState {
@@ -113,7 +170,15 @@ export function newGame(options: NewGameOptions, content: Content): GameState {
         cash: rules.startingCash,
         xp: 0,
         level: 1,
-        stats: { harvested: {}, plowed: 0 },
+        stats: { harvested: {}, counters: {} },
+        masteryStars: {},
+        ribbons: {},
+        collectibles: {},
+        giftBox: {},
+        storage: {},
+        fuel: { amount: content.base.fuelMax, updatedAt: options.realNow },
+        vehicles: [],
+        daily: { lastClaimRealAt: null, streak: 0 },
       },
     },
     farms: {

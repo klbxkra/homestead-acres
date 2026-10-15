@@ -1,0 +1,67 @@
+[
+  {
+    "id": "garden_bugs",
+    "name": "Garden Bugs",
+    "items": [
+      { "id": "ladybug", "name": "Ladybug" },
+      { "id": "beetle", "name": "Beetle" },
+      { "id": "butterfly", "name": "Butterfly" },
+      { "id": "dragonfly", "name": "Dragonfly" },
+      { "id": "cricket", "name": "Cricket" }
+    ],
+    "sources": { "crops": ["strawberry", "raspberry", "blueberry", "cranberry", "grape"] },
+    "reward": { "coins": 1000, "xp": 50, "itemId": "garden_gnome" }
+  },
+  {
+    "id": "old_tools",
+    "name": "Old Tools",
+    "items": [
+      { "id": "rusty_hoe", "name": "Rusty Hoe" },
+      { "id": "horseshoe", "name": "Horseshoe" },
+      { "id": "old_key", "name": "Old Key" },
+      { "id": "pocket_watch", "name": "Pocket Watch" },
+      { "id": "iron_nail", "name": "Iron Nail" }
+    ],
+    "sources": { "plow": true },
+    "reward": { "coins": 1500, "xp": 75, "itemId": "golden_hoe" }
+  },
+  {
+    "id": "flower_petals",
+    "name": "Flower Petals",
+    "items": [
+      { "id": "daisy_petal", "name": "Daisy Petal" },
+      { "id": "rose_petal", "name": "Rose Petal" },
+      { "id": "tulip_petal", "name": "Tulip Petal" },
+      { "id": "violet_petal", "name": "Violet Petal" },
+      { "id": "poppy_petal", "name": "Poppy Petal" }
+    ],
+    "sources": { "crops": ["sunflower", "lavender", "lily", "pink_rose", "cotton", "cabbage"] },
+    "reward": { "coins": 2000, "xp": 100, "itemId": "flower_arch" }
+  },
+  {
+    "id": "country_charms",
+    "name": "Country Charms",
+    "items": [
+      { "id": "lucky_penny", "name": "Lucky Penny" },
+      { "id": "four_leaf_clover", "name": "Four-Leaf Clover" },
+      { "id": "acorn", "name": "Acorn" },
+      { "id": "pinecone", "name": "Pinecone" },
+      { "id": "bird_feather", "name": "Bird Feather" }
+    ],
+    "sources": { "crops": ["soybean", "wheat", "rice", "corn", "peas", "eggplant", "squash", "pumpkin", "potato", "carrot"], "animals": true },
+    "reward": { "coins": 1500, "xp": 75, "cash": 1, "itemId": "lucky_horseshoe" }
+  },
+  {
+    "id": "orchard_finds",
+    "name": "Orchard Finds",
+    "items": [
+      { "id": "bird_nest", "name": "Bird Nest" },
+      { "id": "honeycomb", "name": "Honeycomb" },
+      { "id": "snail_shell", "name": "Snail Shell" },
+      { "id": "leaf_fossil", "name": "Leaf Fossil" },
+      { "id": "golden_apple", "name": "Golden Apple" }
+    ],
+    "sources": { "trees": true },
+    "reward": { "coins": 2500, "xp": 125, "cash": 2, "itemId": "golden_apple_statue" }
+  }
+]

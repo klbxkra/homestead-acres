@@ -1,17 +1,22 @@
 /** Sprites for farm entities, kept in sync with game state. */
 import Phaser from 'phaser';
 import type { Content } from '../../content';
-import { cropStage, cropStatus, footprintOf, lookup } from '../../core';
-import type { DecorationEntity, Entity, PlotEntity, WorldRules } from '../../core';
+import { cropStage, cropStatus, footprintOf, isProducing, lookup } from '../../core';
+import type { Entity, ItemEntity, PlotEntity, WorldRules } from '../../core';
 import { decorationArt } from '../art/artData';
 import {
+  animalKey,
   CROP_TEX_CENTER_Y,
   CROP_TEX_H,
   cropKey,
   decorationOrigin,
   ensureDecorationTexture,
+  READY_MARKER_KEY,
   soilKey,
+  TALL_TEX_CENTER_Y,
+  TALL_TEX_H,
   TEX_SCALE,
+  treeKey,
 } from '../art/textures';
 import type { CropVisual } from '../art/textures';
 import { depthOf, tileToWorld } from '../iso';
@@ -25,12 +30,15 @@ export interface PlotView {
   crop: Phaser.GameObjects.Image;
 }
 
-export interface DecorationView {
-  kind: 'decoration';
+/** Decorations, buildings, trees and animals: one sprite plus a "ready to collect" bubble. */
+export interface ItemView {
+  kind: 'item';
+  entityKind: ItemEntity['kind'];
   image: Phaser.GameObjects.Image;
+  marker: Phaser.GameObjects.Image;
 }
 
-export type EntityView = PlotView | DecorationView;
+export type EntityView = PlotView | ItemView;
 
 export function createView(scene: Phaser.Scene, entity: Entity): EntityView {
   if (entity.kind === 'plot') {
@@ -43,7 +51,14 @@ export function createView(scene: Phaser.Scene, entity: Entity): EntityView {
     return { kind: 'plot', soil, crop };
   }
   const image = scene.add.image(0, 0, '__DEFAULT').setScale(1 / TEX_SCALE);
-  return { kind: 'decoration', image };
+  const marker = scene.add.image(0, 0, READY_MARKER_KEY).setScale(1 / TEX_SCALE).setOrigin(0.5, 1).setVisible(false);
+  return { kind: 'item', entityKind: entity.kind, image, marker };
+}
+
+/** True when a view can't show this entity (it changed kind) and must be rebuilt. */
+export function viewMismatch(view: EntityView, entity: Entity): boolean {
+  if (entity.kind === 'plot') return view.kind !== 'plot';
+  return view.kind !== 'item' || view.entityKind !== entity.kind;
 }
 
 export function updateView(
@@ -55,7 +70,7 @@ export function updateView(
   content: Content,
 ): void {
   if (view.kind === 'plot' && entity.kind === 'plot') updatePlot(view, entity, gameNow, rules, content);
-  else if (view.kind === 'decoration' && entity.kind === 'decoration') updateDecoration(scene, view, entity, content);
+  else if (view.kind === 'item' && entity.kind !== 'plot') updateItem(scene, view, entity, gameNow, content);
 }
 
 export function destroyView(view: EntityView): void {
@@ -64,6 +79,7 @@ export function destroyView(view: EntityView): void {
     view.crop.destroy();
   } else {
     view.image.destroy();
+    view.marker.destroy();
   }
 }
 
@@ -73,6 +89,7 @@ export function setViewAlpha(view: EntityView, alpha: number): void {
     view.crop.setAlpha(alpha);
   } else {
     view.image.setAlpha(alpha);
+    view.marker.setAlpha(alpha);
   }
 }
 
@@ -102,15 +119,29 @@ function updatePlot(view: PlotView, plot: PlotEntity, gameNow: number, rules: Wo
   view.crop.setPosition(x, y).setDepth(depthOf(plot.x, plot.y)).setVisible(true);
 }
 
-function updateDecoration(scene: Phaser.Scene, view: DecorationView, deco: DecorationEntity, content: Content): void {
-  const item = lookup(content.decorations, deco.itemId);
-  const fp = footprintOf(deco, content);
-  const key = ensureDecorationTexture(scene, deco.itemId, item?.width ?? 1, item?.height ?? 1, deco.rotated);
-  setTextureIfChanged(view.image, key);
-  const origin = decorationOrigin(fp.w, fp.h, decorationArt(deco.itemId).height);
-  const { x, y } = tileToWorld(fp.x + (fp.w - 1) / 2, fp.y + (fp.h - 1) / 2);
-  view.image
-    .setOrigin(origin.x, origin.y)
-    .setPosition(x, y)
-    .setDepth(depthOf(fp.x + fp.w - 1, fp.y + fp.h - 1));
+function updateItem(scene: Phaser.Scene, view: ItemView, entity: ItemEntity, gameNow: number, content: Content): void {
+  const fp = footprintOf(entity, content);
+  const depth = depthOf(fp.x + fp.w - 1, fp.y + fp.h - 1);
+  const anchor = tileToWorld(fp.x + (fp.w - 1) / 2, fp.y + (fp.h - 1) / 2);
+  let topY: number;
+
+  if (entity.kind === 'tree' || entity.kind === 'animal') {
+    const ready = gameNow >= entity.readyAt;
+    setTextureIfChanged(view.image, entity.kind === 'tree' ? treeKey(entity.itemId, ready) : animalKey(entity.itemId));
+    view.image.setOrigin(0.5, TALL_TEX_CENTER_Y / TALL_TEX_H);
+    topY = anchor.y - (entity.kind === 'tree' ? 66 : 30);
+  } else {
+    const item = lookup(content.placeables, entity.itemId);
+    const key = ensureDecorationTexture(scene, entity.itemId, item?.width ?? 1, item?.height ?? 1, entity.rotated);
+    setTextureIfChanged(view.image, key);
+    const art = decorationArt(entity.itemId);
+    const origin = decorationOrigin(fp.w, fp.h, art.height, entity.itemId);
+    view.image.setOrigin(origin.x, origin.y);
+    topY = anchor.y - art.height - (art.roofHeight ?? 0) - 4;
+  }
+  view.image.setPosition(anchor.x, anchor.y).setDepth(depth);
+
+  const showMarker = entity.kind !== 'decoration' && isProducing(entity, gameNow);
+  view.marker.setVisible(showMarker);
+  if (showMarker) view.marker.setPosition(anchor.x, topY).setDepth(depth + 0.5);
 }

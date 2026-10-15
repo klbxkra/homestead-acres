@@ -3,7 +3,9 @@ import type { GameApp } from '../app/GameApp';
 import type { Session } from '../app/session';
 import { GAME_VERSION } from '../config';
 import { isTouchPrimary, renderPixelRatio, viewportSize } from '../platform/device';
-import { AppNotice, WelcomeBack } from './AppPopups';
+import { AppNotice, DailyBonus, WelcomeBack } from './AppPopups';
+import { FarmerBook } from './FarmerBook';
+import { InventoryPanel } from './Inventory';
 import { GameMenu } from './GameMenu';
 import { useStore } from './hooks';
 import { Hud } from './Hud';
@@ -45,6 +47,9 @@ function FarmUi({ gameApp, session }: { gameApp: GameApp; session: Session }) {
       <TooltipView session={session} />
       <Toasts session={session} />
       <Market session={session} />
+      <InventoryPanel session={session} />
+      <FarmerBook session={session} />
+      <DailyBonus gameApp={gameApp} session={session} />
       <ConfirmDialog session={session} />
     </>
   );

@@ -47,7 +47,14 @@ D:\Farmville
 │  ├─ core/                 # PURE simulation (no Phaser/DOM/storage)
 │  │  ├─ state.ts           # GameState, PlayerState, FarmState, entity types, newGame()
 │  │  ├─ commands.ts        # Command union, envelope (playerId/farmId/clientSeq), error codes
-│  │  ├─ reducer.ts         # applyCommand(state, envelope, realNow, content) -> { state, events } | error; tick()
+│  │  ├─ reducer.ts         # applyCommand(state, envelope, realNow, content) -> { state, events } | error; tick(); setRules
+│  │  ├─ context.ts         # command draft (Ctx), rejections, payments, seeded dice
+│  │  ├─ fieldwork.ts       # plow / plant / harvest crops
+│  │  ├─ production.ts      # trees, animals, animal buildings; harvestAt dispatch
+│  │  ├─ items.ts           # buy / place from inventory / store / sell / move / house animals / storage capacity
+│  │  ├─ rewards.ts         # counters + ribbons, mastery, collectibles, reward payout
+│  │  ├─ vehicles.ts        # fuel, buy, refuel, area work
+│  │  ├─ daily.ts           # daily bonus (real time) and farm expansion
 │  │  ├─ events.ts          # GameEvent union (drives effects; broadcast in co-op)
 │  │  ├─ time.ts            # clock advance, offline-progress policy
 │  │  ├─ crops.ts           # derived crop/plot status, growth stages, withering
@@ -57,7 +64,7 @@ D:\Farmville
 │  │  ├─ grid.ts            # tile occupancy, footprints, placement validation
 │  │  ├─ rng.ts             # seeded PRNG (mulberry32) stored in state
 │  │  └─ ids.ts             # entity IDs (string, never array index), safe record lookup
-│  ├─ content/              # JSON data tables (crops, decorations, levels, base; later trees, animals, ...)
+│  ├─ content/              # JSON data tables: crops, trees, animals, buildings, decorations, vehicles, expansions, ribbons, collections, levels, base
 │  │  ├─ schema.ts          # zod schemas + types
 │  │  └─ index.ts           # validates tables, builds lookups (defaultContent)
 │  ├─ persistence/
@@ -174,6 +181,7 @@ interface WorldRules {
   farmCashEarnRate: number;
   fuelRegenPerHour: number;
   collectibleDropRate: number;
+  masteryGoal: number;          // multiplier on harvests needed for mastery stars (added in save v2)
   offlineProgress: 'full' | 'capped' | 'paused'; // 'paused' = timers freeze while game closed
   offlineCapHours: number;
   aiNeighborCount: number;
@@ -245,16 +253,16 @@ All formulas go through `economy.ts`, for example `effectiveGrowMs(item, rules)`
 | Rotate held item | Toolbar button | R |
 | Cancel tool | Toolbar button | Esc / right-click |
 | Repeat action over many plots | Paint toggle in the toolbar, then drag across plots (every tile on the path counts, even on fast swipes) | Same, or Shift-drag |
-| Tools | Toolbar | 1–6 tools, M market, P paint |
+| Tools | Toolbar (Move, Sell and Store sit under Edit) | 1–8 tools, M market, I inventory, B book, P paint |
 
 Pressing, pausing, then dragging still drags: the long-press info shows first, then the drag takes over.
 
 **Layout (Preact overlay, responsive by CSS breakpoints)**
-- **Large screens**: FV1-style layout. Resources bar along the top, tool palette at the bottom right, and the market as a centered modal with tabs.
+- **Large screens**: FV1-style layout. Resources bar along the top, grouped tool palette with labels at the bottom right, and the market as a large modal below the top bar with a full row of tabs.
 - **Phones (landscape)**:
   - compact top HUD
-  - the toolbar collapses into a vertical rail on the right edge, within thumb reach
-  - the market and dialogs open as full-height side sheets
+  - the toolbar's groups become columns on the right edge, within thumb reach
+  - the market and dialogs open as full-height side sheets (the market with a vertical tab rail)
 - Tap targets ≥ 44px; text sizing controlled by a UI scale setting.
 - Respect safe-area insets (`env(safe-area-inset-*)`) for notches and home bars.
 
@@ -383,14 +391,58 @@ Found and fixed during verification:
 - On tall screens the farm was pinned to the top (camera bounds are now never smaller than the view).
 - The HUD overflowed narrow desktop windows (the title chip is hidden below 820px).
 
-### Phase 5: Content depth (1.5–2 weeks)
-- [ ] Trees, animals (and animal buildings), decorations
-- [ ] Storage, gift box and inventory
-- [ ] Crop mastery, ribbons, collections, daily bonus
-- [ ] Farm expansions
-- [ ] Vehicles and fuel
-- [ ] Full crop list (about 30 crops), with level unlocks to about level 40 at first
-- [ ] **Verify**: tests for each system; a playthrough from level 1 to 10 under the Speedrun preset
+### Phase 5: Content depth (1.5–2 weeks) ✅ done 2026-10-15
+- [x] Content tables (zod-validated JSON, one shared item-id namespace, cross-reference checks):
+  - 34 crops unlocking from level 1 to 40
+  - 10 trees, 8 animals, 6 buildings (4 animal homes, 2 storage)
+  - 15 decorations (6 of them reward-only)
+  - 4 vehicles, 5 expansions (12 → 22), 8 ribbons × 4 tiers, 5 collections × 5 items
+  - daily-bonus table
+- [x] **Save format v2** with a real v1 → v2 migration (new player fields, `stats.plowed` → `stats.counters`, `rules.masteryGoal`). It was verified live by opening a Phase 3 farm.
+- [x] **Core split into modules:** `context`, `fieldwork`, `production`, `items`, `rewards`, `vehicles`, `daily`, with `reducer` as a thin dispatcher.
+- [x] **Trees and animals:** produce every cycle (`treeCycle` / `animalCycle` rules and per-item overrides) and never wither.
+- [x] **Animal buildings:** an animal moves in when it is bought onto, or dragged onto, a matching building, keeping its timer. Capacity is enforced, buildings collect every ready animal at once, and a building with animals inside can't be sold or stored.
+- [x] **Gift box and storage:**
+  - The gift box (unlimited) receives rewards.
+  - Storage holds 30 slots plus storage buildings; you can't remove a building whose slots are in use.
+  - The 📦 store tool puts items away; items can be placed from either inventory (free, no XP) or sold back (half price; reward items sell for nothing).
+- [x] **Crop mastery:**
+  - 3 stars at 30/100/250 harvests (15/50/125 for crops over 12h) × `masteryGoal`.
+  - Each star pays coins and XP, and several can arrive at once.
+  - Mastered crops get a 10% seed discount and a Mastery Sign.
+- [x] **Ribbons:** counters (plowed, crops/trees/animals harvested, items bought, coins earned, crops mastered, collections completed) award Yellow → White → Red → Blue tiers with rewards, catching up several tiers at once.
+- [x] **Collections:** seeded-RNG drops from crops, trees, animals or plowing (5% × `collectibleDropRate`), with set turn-in for coins, XP, cash and a decoration.
+- [x] **Daily bonus:** a 5-day reward ramp on real (wall-clock) time, so speeding up the game doesn't speed up days. 20h cooldown; the streak resets after 48h.
+- [x] **Farm expansion:** level- and coin-gated, from the market's Expand tab.
+- [x] **Vehicles and fuel:**
+  - Tractor 2×2 plow, Seeder 2×2 plant, Harvester 2×2 harvest, Combine 3×3 all three.
+  - Each use costs fuel plus the normal per-tile costs. Tiles that can't be worked are skipped, running out of coins keeps the tiles already done, and no fuel is used if nothing happened.
+  - The 10-unit tank refills per game hour (`fuelRegenPerHour`), or fully for Farm Cash from the HUD gauge.
+- [x] **UI:**
+  - Market tabs: Seeds (with mastery stars), Trees, Animals, Buildings, Decor, Vehicles, Expand.
+  - 🎁 Inventory panel with a badge, 📖 Farmer's Book (Mastery / Ribbons / Collections), daily-bonus popup, ⛽ fuel chip.
+  - Toolbar: 📦 store tool and 🚜 vehicle tool (cycles owned vehicles), with an area preview.
+  - Shortcuts: 7 store, 8 vehicle, I inventory, B book.
+  - **UX pass after testing:**
+    - Toolbar grouped: farming tools (Multi, Plow, Seeds, Harvest, Edit ▸ Move/Sell/Store, Drive), panels (Gifts, Book, Market), and per-tool buttons (Paint, Rotate, Cancel) in their own group so the others never shift. Short labels under icons on PC; the chosen seed shows as a dot on Seeds.
+    - Phones: those groups become columns on the right edge (farming tools in the outer column), and the status chip floats beside them.
+    - Market: tabs get their own row on PC (all 7 always visible, wrapping if needed), and the market opens below the top bar so coins stay in view. On phones the tabs become a rail down the sheet's side and cards go sideways, about twice as many per screen. Switching tabs scrolls back to the top.
+    - The dev server uses a strict port, so a stale server gives a clear "port in use" error instead of silently moving to 5174.
+  - The rules editor gained tree/animal cycle, fuel, collectible and mastery sliders.
+- [x] **Art:**
+  - Trees (with fruit when ready) and animals (spots, beaks, sizes).
+  - Buildings with pyramid roofs; more decoration shapes.
+  - A "ready" coin bubble over anything collectible.
+- [x] **Verify**:
+  - **Tests:** 195 unit tests (items, housing, storage limits, production cycles, mastery, ribbons, collections incl. RNG determinism, daily streaks against real time, expansion, every vehicle, fuel, and v1 → v2 migration), plus a mutation check of ribbon catch-up and housing capacity.
+  - **Playthrough bot through the real reducer:** Speed run reaches level 10 in under 4 game days. Classic reaches level 10 in about 32 game hours for a farmer checking every 4 hours (about 1,000 actions, 250 harvests).
+  - **In the browser:** v1 farm migration; every item placed and rendered; ready markers; multi-tool collecting from the coop and a tree; cow dragged into the dairy; store/place round trip; turning in a collection; tractor area plow with fuel; expansion; daily bonus.
+
+Not in Phase 5 (moved on purpose):
+- Construction buildings built from parts, Unwither and Fertilize items, and animal "babies" go with the gift economy in **Phase 6**.
+- An orchard building and the crafting cottage are **later content**.
+
+Balance note: early levels come fast on Classic (as in FV1). Tune with `xpGain` / the level table after real play.
 
 ### Phase 6: Single-player social replacements (3–5 days)
 - [ ] AI neighbors (generation, daily gifts, fertilize visits)

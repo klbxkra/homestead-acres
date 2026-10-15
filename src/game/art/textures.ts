@@ -6,7 +6,7 @@ import Phaser from 'phaser';
 import type { Content } from '../../content';
 import { GROWTH_STAGES } from '../../core';
 import { TILE_HEIGHT, TILE_WIDTH } from '../iso';
-import { cropArt, decorationArt } from './artData';
+import { animalArt, cropArt, decorationArt, treeArt } from './artData';
 import type { CropArt } from './artData';
 
 export const TEX_SCALE = 2;
@@ -30,12 +30,33 @@ export function decorationKey(itemId: string, rotated: boolean): string {
   return `deco-${itemId}-${rotated ? 'r' : 'n'}`;
 }
 
-/** Texture origin for decoration images, so the footprint centre lands on the anchor point. */
-export function decorationOrigin(w: number, h: number, height: number): { x: number; y: number } {
+export function treeKey(itemId: string, ready: boolean): string {
+  return `tree-${itemId}-${ready ? 'ready' : 'growing'}`;
+}
+
+export function animalKey(itemId: string): string {
+  return `animal-${itemId}`;
+}
+
+export const READY_MARKER_KEY = 'ready-marker';
+
+/** Trees and animals: 1x1 sprites taller than a tile; the tile centre sits at this y. */
+export const TALL_TEX_W = TILE_WIDTH;
+export const TALL_TEX_H = 96;
+export const TALL_TEX_CENTER_Y = TALL_TEX_H - TILE_HEIGHT / 2 - 2;
+
+/** Extra headroom above a box for its roof. */
+function roofHeadroom(itemId: string): number {
+  return decorationArt(itemId).roofHeight ?? 0;
+}
+
+/** Texture origin for box images (decorations, buildings), so the footprint centre lands on the anchor point. */
+export function decorationOrigin(w: number, h: number, height: number, itemId?: string): { x: number; y: number } {
+  const top = height + (itemId ? roofHeadroom(itemId) : 0);
   const texW = ((w + h) * TILE_WIDTH) / 2;
-  const texH = ((w + h) * TILE_HEIGHT) / 2 + height;
+  const texH = ((w + h) * TILE_HEIGHT) / 2 + top;
   const cx = ((w - h) * TILE_WIDTH) / 4 + (h * TILE_WIDTH) / 2;
-  const cy = ((w + h) * TILE_HEIGHT) / 4 + height;
+  const cy = ((w + h) * TILE_HEIGHT) / 4 + top;
   return { x: cx / texW, y: cy / texH };
 }
 
@@ -49,10 +70,18 @@ export function generateTextures(scene: Phaser.Scene, content: Content): void {
     makeCrop(scene, g, cropKey(cropId, 'ripe'), art, 'ripe');
     makeCrop(scene, g, cropKey(cropId, 'withered'), art, 'withered');
   }
-  for (const item of Object.values(content.decorations)) {
-    makeDecoration(scene, g, item.id, item.width, item.height, false);
-    if (item.width !== item.height) makeDecoration(scene, g, item.id, item.width, item.height, true);
+  for (const item of Object.values(content.placeables)) {
+    if (item.kind === 'decoration' || item.kind === 'building') {
+      makeDecoration(scene, g, item.id, item.width, item.height, false);
+      if (item.width !== item.height) makeDecoration(scene, g, item.id, item.width, item.height, true);
+    } else if (item.kind === 'tree') {
+      makeTree(scene, g, item.id, false);
+      makeTree(scene, g, item.id, true);
+    } else {
+      makeAnimal(scene, g, item.id);
+    }
   }
+  makeReadyMarker(scene, g);
   g.destroy();
 }
 
@@ -198,7 +227,9 @@ function makeDecoration(
   const art = decorationArt(itemId);
   const w = rotated ? baseH : baseW;
   const h = rotated ? baseW : baseH;
-  const height = art.height;
+  const roofH = art.roofHeight ?? 0;
+  // Everything is drawn `roofH` lower so the roof fits inside the texture.
+  const height = art.height + roofH;
   const texW = ((w + h) * TILE_WIDTH) / 2;
   const texH = ((w + h) * TILE_HEIGHT) / 2 + height;
 
@@ -221,13 +252,98 @@ function makeDecoration(
     g.fillPath();
   };
 
+  const wall = art.height;
   const left = pt(0, h, 0);
   const bottom = pt(w, h, 0);
   const right = pt(w, 0, 0);
   // Left face, right face, then the top.
-  poly([left, bottom, pt(w, h, height), pt(0, h, height)], art.left);
-  poly([bottom, right, pt(w, 0, height), pt(w, h, height)], art.right);
-  poly([pt(0, 0, height), pt(w, 0, height), pt(w, h, height), pt(0, h, height)], art.top);
+  poly([left, bottom, pt(w, h, wall), pt(0, h, wall)], art.left);
+  poly([bottom, right, pt(w, 0, wall), pt(w, h, wall)], art.right);
+  poly([pt(0, 0, wall), pt(w, 0, wall), pt(w, h, wall), pt(0, h, wall)], art.top);
+
+  if (art.roof !== undefined && roofH > 0) {
+    // Pyramid roof: the two faces toward the viewer, a little wider than the walls.
+    const overhang = 1.08;
+    const r = (a: number, b: number) => pt(centerA + (a - centerA) * overhang, centerB + (b - centerB) * overhang, wall);
+    const apex = pt(centerA, centerB, wall + roofH);
+    poly([r(0, h), r(w, h), apex], shadeColor(art.roof, 0.9));
+    poly([r(w, h), r(w, 0), apex], shadeColor(art.roof, 0.72));
+  }
 
   save(scene, g, decorationKey(itemId, rotated), texW, texH);
+}
+
+function makeTree(scene: Phaser.Scene, g: Phaser.GameObjects.Graphics, itemId: string, ready: boolean): void {
+  const s = TEX_SCALE;
+  const art = treeArt(itemId);
+  const cx = TALL_TEX_W / 2;
+  const base = TALL_TEX_CENTER_Y;
+  // Shadow, trunk, canopy.
+  g.fillStyle(0x000000, 0.18);
+  g.fillEllipse(cx * s, (base + 2) * s, 34 * s, 12 * s);
+  g.fillStyle(0x6d4c41, 1);
+  g.fillRect((cx - 3) * s, (base - 30) * s, 6 * s, 30 * s);
+  g.fillStyle(shadeColor(art.canopy, 0.8), 1);
+  g.fillCircle((cx - 9) * s, (base - 38) * s, 13 * s);
+  g.fillCircle((cx + 9) * s, (base - 38) * s, 13 * s);
+  g.fillStyle(art.canopy, 1);
+  g.fillCircle(cx * s, (base - 48) * s, 16 * s);
+  g.fillCircle((cx - 7) * s, (base - 42) * s, 11 * s);
+  if (ready) {
+    g.fillStyle(art.fruit, 1);
+    for (const [dx, dy] of [[-10, -40], [8, -44], [-2, -54], [12, -34], [-6, -32], [4, -60]] as const) {
+      g.fillCircle((cx + dx) * s, (base + dy) * s, 3 * s);
+    }
+  }
+  save(scene, g, treeKey(itemId, ready), TALL_TEX_W, TALL_TEX_H);
+}
+
+function makeAnimal(scene: Phaser.Scene, g: Phaser.GameObjects.Graphics, itemId: string): void {
+  const s = TEX_SCALE;
+  const art = animalArt(itemId);
+  const k = art.size;
+  const cx = TALL_TEX_W / 2;
+  const base = TALL_TEX_CENTER_Y;
+  g.fillStyle(0x000000, 0.18);
+  g.fillEllipse(cx * s, (base + 1) * s, 26 * k * s, 9 * k * s);
+  // Legs
+  g.fillStyle(shadeColor(art.body, 0.6), 1);
+  for (const dx of [-7, -3, 3, 7]) g.fillRect((cx + dx * k - 1.2) * s, (base - 7 * k) * s, 2.4 * s, 7 * k * s);
+  // Body, spots, head
+  g.fillStyle(art.body, 1);
+  g.fillEllipse(cx * s, (base - 11 * k) * s, 24 * k * s, 13 * k * s);
+  if (art.spots !== undefined) {
+    g.fillStyle(art.spots, 1);
+    g.fillCircle((cx - 4 * k) * s, (base - 12 * k) * s, 3 * k * s);
+    g.fillCircle((cx + 5 * k) * s, (base - 9 * k) * s, 2.5 * k * s);
+  }
+  g.fillStyle(art.body, 1);
+  g.fillCircle((cx + 12 * k) * s, (base - 17 * k) * s, 6 * k * s);
+  g.fillStyle(art.accent, 1);
+  g.fillCircle((cx + 16 * k) * s, (base - 16 * k) * s, 2.4 * k * s);
+  g.fillStyle(0x212121, 1);
+  g.fillCircle((cx + 13 * k) * s, (base - 19 * k) * s, 1.1 * s);
+  save(scene, g, animalKey(itemId), TALL_TEX_W, TALL_TEX_H);
+}
+
+/** Speech-bubble marker with a coin, floated over anything ready to collect. */
+function makeReadyMarker(scene: Phaser.Scene, g: Phaser.GameObjects.Graphics): void {
+  const s = TEX_SCALE;
+  g.fillStyle(0xffffff, 1);
+  g.lineStyle(1.5 * s, 0x5d4037, 1);
+  g.fillRoundedRect(1 * s, 1 * s, 22 * s, 18 * s, 6 * s);
+  g.strokeRoundedRect(1 * s, 1 * s, 22 * s, 18 * s, 6 * s);
+  g.fillTriangle(8 * s, 18 * s, 16 * s, 18 * s, 12 * s, 24 * s);
+  g.fillStyle(0xffc107, 1);
+  g.fillCircle(12 * s, 10 * s, 6 * s);
+  g.fillStyle(0xffe082, 1);
+  g.fillCircle(11 * s, 9 * s, 3 * s);
+  save(scene, g, READY_MARKER_KEY, 24, 26);
+}
+
+function shadeColor(c: number, f: number): number {
+  const r = Math.round(((c >> 16) & 255) * f);
+  const gr = Math.round(((c >> 8) & 255) * f);
+  const b = Math.round((c & 255) * f);
+  return (r << 16) | (gr << 8) | b;
 }

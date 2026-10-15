@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { defaultContent } from '../../src/content';
-import { gainXp, levelForXp, maxLevel, rulesForPreset, xpForLevel } from '../../src/core';
+import { gainXp, levelForXp, maxLevel, newGame, rulesForPreset, xpForLevel } from '../../src/core';
 import type { GameEvent, PlayerState } from '../../src/core';
 
 const levels = defaultContent.levels;
 
 function freshPlayer(): PlayerState {
-  return { id: 'p', name: 'P', coins: 0, cash: 0, xp: 0, level: 1, stats: { harvested: {}, plowed: 0 } };
+  const state = newGame({ farmName: 'F', playerName: 'P', realNow: 0, seed: 1, rules: { ...rulesForPreset('classic'), startingCash: 0 } }, defaultContent);
+  return state.players[state.localPlayerId]!;
 }
 
 describe('levels', () => {

@@ -2,5 +2,37 @@
   "plowCost": 15,
   "plowXp": 1,
   "sellRefundFactor": 0.5,
-  "startFarmSize": 12
+  "startFarmSize": 12,
+  "storageCapacity": 30,
+  "fuelMax": 10,
+  "fuelPerCash": 5,
+  "treeHarvestXp": 1,
+  "animalHarvestXp": 1,
+  "collectibleChance": 0.05,
+  "mastery": {
+    "longCropHours": 12,
+    "shortThresholds": [30, 100, 250],
+    "longThresholds": [15, 50, 125],
+    "coinsPerStarFactor": 3,
+    "xpPerStar": 10,
+    "seedDiscount": 0.1,
+    "rewardItemId": "mastery_sign"
+  },
+  "ribbonRewards": [
+    { "coins": 100, "xp": 10 },
+    { "coins": 500, "xp": 50 },
+    { "coins": 2000, "xp": 150, "cash": 1 },
+    { "coins": 10000, "xp": 500, "cash": 5 }
+  ],
+  "dailyBonus": {
+    "cooldownHours": 20,
+    "streakWindowHours": 48,
+    "days": [
+      { "coins": 50, "xp": 5 },
+      { "coins": 100, "xp": 10 },
+      { "coins": 150, "xp": 15 },
+      { "coins": 250, "xp": 20 },
+      { "coins": 400, "xp": 30, "cash": 1 }
+    ]
+  }
 }

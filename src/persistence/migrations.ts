@@ -10,7 +10,39 @@ import { SCHEMA_VERSION } from '../core';
 export type Migration = (state: Record<string, unknown>) => Record<string, unknown>;
 
 export const MIGRATIONS: Readonly<Record<number, Migration>> = {
-  // 1: (s) => ({ ...s, schemaVersion: 2, newField: defaultValue }),
+  /**
+   * v1 -> v2 (Phase 5): players gain mastery, ribbons, collectibles, gift box,
+   * storage, fuel, vehicles and daily-bonus state; stats.plowed moves into
+   * stats.counters; rules gain masteryGoal. Mastery stars and ribbon tiers start
+   * at 0 and catch up (with their rewards) on the next matching action.
+   */
+  1: (s) => {
+    const clock = (s['clock'] ?? {}) as { gameNow?: number };
+    const players = (s['players'] ?? {}) as Record<string, Record<string, unknown>>;
+    const upgraded = Object.fromEntries(
+      Object.entries(players).map(([id, p]) => {
+        const stats = (p['stats'] ?? {}) as { harvested?: Record<string, number>; plowed?: number };
+        const harvested = stats.harvested ?? {};
+        const cropsHarvested = Object.values(harvested).reduce((a, b) => a + b, 0);
+        return [
+          id,
+          {
+            ...p,
+            stats: { harvested, counters: { plowed: stats.plowed ?? 0, cropsHarvested } },
+            masteryStars: {},
+            ribbons: {},
+            collectibles: {},
+            giftBox: {},
+            storage: {},
+            fuel: { amount: 10, updatedAt: clock.gameNow ?? 0 },
+            vehicles: [],
+            daily: { lastClaimRealAt: null, streak: 0 },
+          },
+        ];
+      }),
+    );
+    return { ...s, players: upgraded, rules: { ...(s['rules'] as object), masteryGoal: 1 } };
+  },
 };
 
 export type MigrationResult = { ok: true; state: Record<string, unknown> } | { ok: false; error: string };

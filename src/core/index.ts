@@ -1,12 +1,18 @@
 export * from './commands';
 export * from './crops';
+export * from './daily';
 export * from './economy';
 export * from './events';
 export * from './grid';
 export * from './ids';
+export { inventoryOf, storageCapacity, storedCount } from './items';
+export * from './production';
 export * from './progression';
 export * from './reducer';
+export { isMastered } from './rewards';
+export type { CounterName } from './rewards';
 export * from './rng';
 export * from './rules';
 export * from './state';
 export * from './time';
+export { fuelAt, refuelCost } from './vehicles';

@@ -8,7 +8,9 @@ const ctx = (patch: Partial<ToolContext> = {}): ToolContext => ({
   tool: 'multi',
   seedId: null,
   placeItemId: null,
+  placeFrom: 'market',
   movingEntityId: null,
+  vehicleId: null,
   rotated: false,
   ...patch,
 });
@@ -83,7 +85,7 @@ describe('other tools', () => {
     h.ok({ type: 'plow', x: 2, y: 2 });
     h.ok({ type: 'plant', x: 2, y: 2, cropId: 'strawberry' });
     const sell = ctx({ tool: 'sell' });
-    expect(tap(h, sell, 1, 1)).toMatchObject({ kind: 'command', confirm: 'Sell Hay Bale?' });
+    expect(tap(h, sell, 1, 1)).toMatchObject({ kind: 'command', confirm: 'Sell Hay Bale for 10 coins?' });
     expect(tap(h, sell, 2, 2)).toMatchObject({ kind: 'command', confirm: expect.stringContaining('Strawberries') });
     const plain = tap(h, sell, 0, 0);
     expect(plain.kind === 'command' && plain.confirm).toBeFalsy();

@@ -49,6 +49,18 @@ export class Harness {
     return this.state.clock.gameNow;
   }
 
+  /** Test setup shortcut: jump to a level and/or coin balance without playing there. */
+  cheat({ level, coins, cash }: { level?: number; coins?: number; cash?: number }): void {
+    const p = this.state.players[this.state.localPlayerId]!;
+    if (level !== undefined) p.level = level;
+    if (coins !== undefined) p.coins = coins;
+    if (cash !== undefined) p.cash = cash;
+  }
+
+  entityAt(x: number, y: number) {
+    return entityAt(this.farm, x, y, this.content);
+  }
+
   plot(x: number, y: number): PlotEntity | undefined {
     const e = entityAt(this.farm, x, y, this.content);
     return e?.kind === 'plot' ? e : undefined;

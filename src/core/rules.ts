@@ -39,6 +39,8 @@ export interface WorldRules {
   farmCashEarnRate: number;
   fuelRegenPerHour: number;
   collectibleDropRate: number;
+  /** Multiplier on harvests needed for crop mastery stars. */
+  masteryGoal: number;
   /** What happens to timers while the game is closed or in the background. */
   offlineProgress: OfflineProgress;
   /** With offlineProgress 'capped': most real hours of absence that count. */
@@ -67,6 +69,7 @@ const CLASSIC: WorldRules = {
   farmCashEarnRate: 1,
   fuelRegenPerHour: 1,
   collectibleDropRate: 1,
+  masteryGoal: 1,
   offlineProgress: 'full',
   offlineCapHours: 24,
   aiNeighborCount: 5,
@@ -120,6 +123,7 @@ export const RULE_LIMITS: Record<NumericRuleKey, { min: number; max: number; int
   farmCashEarnRate: { min: 0, max: 100 },
   fuelRegenPerHour: { min: 0, max: 1000 },
   collectibleDropRate: { min: 0, max: 100 },
+  masteryGoal: { min: 0.01, max: 100 },
   offlineCapHours: { min: 0, max: 24 * 365 },
   aiNeighborCount: { min: 0, max: 20, integer: true },
   aiGiftsPerDay: { min: 0, max: 100 },

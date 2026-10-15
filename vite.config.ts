@@ -5,6 +5,9 @@ export default defineConfig({
   plugins: [preact()],
   server: {
     port: 5173,
+    // Fail loudly if an old dev server still holds the port, instead of quietly
+    // moving to 5174+ where the preview (and your bookmarks) won't find it.
+    strictPort: true,
   },
   build: {
     target: 'es2022',

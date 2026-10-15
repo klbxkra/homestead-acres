@@ -1,0 +1,10 @@
+[
+  { "id": "chicken", "name": "Chicken", "product": "Eggs", "cost": 150, "xp": 3, "cycleHours": 24, "yield": 30, "unlockLevel": 3 },
+  { "id": "cow", "name": "Cow", "product": "Milk", "cost": 600, "xp": 6, "cycleHours": 24, "yield": 70, "unlockLevel": 6 },
+  { "id": "sheep", "name": "Sheep", "product": "Wool", "cost": 700, "xp": 7, "cycleHours": 72, "yield": 160, "unlockLevel": 9 },
+  { "id": "pig", "name": "Pig", "product": "Truffles", "cost": 800, "xp": 8, "cycleHours": 48, "yield": 130, "unlockLevel": 12 },
+  { "id": "duck", "name": "Duck", "product": "Feathers", "cost": 500, "xp": 5, "cycleHours": 48, "yield": 75, "unlockLevel": 14 },
+  { "id": "goat", "name": "Goat", "product": "Goat Milk", "cost": 900, "xp": 9, "cycleHours": 48, "yield": 150, "unlockLevel": 17 },
+  { "id": "rabbit", "name": "Rabbit", "product": "Fur", "cost": 650, "xp": 6, "cycleHours": 24, "yield": 70, "unlockLevel": 20 },
+  { "id": "horse", "name": "Horse", "product": "Horsehair", "cost": 1500, "xp": 15, "cycleHours": 72, "yield": 260, "unlockLevel": 24 }
+]

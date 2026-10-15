@@ -1,9 +1,38 @@
 import type { ComponentChildren } from 'preact';
 import type { Session } from '../app/session';
 import { GAME_TITLE } from '../config';
-import { maxLevel, xpForLevel } from '../core';
+import { toast } from '../app/uiState';
+import { fuelAt, maxLevel, refuelCost, xpForLevel } from '../core';
 import { formatNumber } from './format';
 import { useGameState } from './hooks';
+
+/** Fuel gauge; tapping it offers a refill for Farm Cash. */
+function FuelChip({ session }: { session: Session }) {
+  const { transport, ui } = session;
+  const state = useGameState(transport);
+  const player = state.players[state.localPlayerId]!;
+  const content = transport.content;
+  const fuel = fuelAt(player.fuel, state.clock.gameNow, state.rules, content);
+  const cost = refuelCost(player.fuel, state.clock.gameNow, state.rules, content);
+  const refill = () => {
+    if (cost === 0) return toast(ui, 'The tank is full.', 'info');
+    ui.set({
+      confirm: {
+        message: `Fill the fuel tank for ${cost} Farm Cash? (It also refills slowly by itself.)`,
+        confirmLabel: 'Refuel',
+        onConfirm: () => {
+          const r = transport.send({ type: 'refuel' });
+          if (!r.ok) toast(ui, r.error.message, 'error');
+        },
+      },
+    });
+  };
+  return (
+    <button type="button" class="hud-chip interactive hud-btn" title="Fuel (tap to refill)" onClick={refill}>
+      ⛽ <span>{Math.floor(fuel)}/{content.base.fuelMax}</span>
+    </button>
+  );
+}
 
 export function Hud({ session, menu }: { session: Session; menu?: ComponentChildren }) {
   const state = useGameState(session.transport);
@@ -32,6 +61,7 @@ export function Hud({ session, menu }: { session: Session; menu?: ComponentChild
       <div class="hud-chip interactive" title="Farm Cash">
         💵 <span>{formatNumber(player.cash)}</span>
       </div>
+      {player.vehicles.length > 0 && <FuelChip session={session} />}
       {state.rules.timeScale !== 1 && (
         <div class="hud-chip hud-speed" title="Time runs faster than real time (World Rules)">
           ⏩ ×{state.rules.timeScale}

@@ -141,6 +141,49 @@ export function RulesEditor({ rules, onChange, mode, content, onError }: RulesEd
           checked={rules.keepPlowedAfterHarvest}
           onChange={(keepPlowedAfterHarvest) => update({ keepPlowedAfterHarvest })}
         />
+        <StopSlider
+          label="Harvests needed for mastery"
+          hint="Lower makes mastery stars come sooner."
+          stops={STOPS.masteryGoal}
+          value={rules.masteryGoal}
+          format={formatMultiplier}
+          onChange={(masteryGoal) => update({ masteryGoal })}
+        />
+      </section>
+
+      <section>
+        <h3>Trees, animals & vehicles</h3>
+        <StopSlider
+          label="Tree harvest time"
+          hint={mode === 'farm' ? 'Applies from each tree\'s next cycle.' : 'Lower is faster.'}
+          stops={STOPS.cropGrowth}
+          value={rules.treeCycle}
+          format={formatGrowth}
+          onChange={(treeCycle) => update({ treeCycle })}
+        />
+        <StopSlider
+          label="Animal harvest time"
+          hint={mode === 'farm' ? 'Applies from each animal\'s next cycle.' : 'Lower is faster.'}
+          stops={STOPS.cropGrowth}
+          value={rules.animalCycle}
+          format={formatGrowth}
+          onChange={(animalCycle) => update({ animalCycle })}
+        />
+        <StopSlider
+          label="Fuel refill per game hour"
+          stops={STOPS.fuelRegenPerHour}
+          value={rules.fuelRegenPerHour}
+          format={(v) => `${v} fuel`}
+          onChange={(fuelRegenPerHour) => update({ fuelRegenPerHour })}
+        />
+        <StopSlider
+          label="Collectible finds"
+          hint="How often collectibles turn up while farming."
+          stops={STOPS.reward}
+          value={rules.collectibleDropRate}
+          format={formatMultiplier}
+          onChange={(collectibleDropRate) => update({ collectibleDropRate })}
+        />
       </section>
 
       <section>
@@ -284,7 +327,9 @@ function ItemOverrides({ rules, content, onChange }: { rules: WorldRules; conten
   };
 
   const crops = Object.values(content.crops).sort((a, b) => a.unlockLevel - b.unlockLevel);
-  const decorations = Object.values(content.decorations).sort((a, b) => a.unlockLevel - b.unlockLevel);
+  const decorations = Object.values(content.placeables)
+    .filter((p) => p.buyable)
+    .sort((a, b) => a.kind.localeCompare(b.kind) || a.unlockLevel - b.unlockLevel);
 
   return (
     <div class="override-tables">
@@ -313,7 +358,7 @@ function ItemOverrides({ rules, content, onChange }: { rules: WorldRules; conten
       <table class="override-table">
         <thead>
           <tr>
-            <th>Decoration</th>
+            <th>Item</th>
             <th>Cost</th>
             <th>XP</th>
           </tr>

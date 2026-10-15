@@ -1,0 +1,6 @@
+[
+  { "id": "tractor", "name": "Tractor", "cost": 8000, "unlockLevel": 10, "actions": ["plow"], "area": 2, "fuelPerUse": 1 },
+  { "id": "seeder", "name": "Seeder", "cost": 12000, "unlockLevel": 15, "actions": ["plant"], "area": 2, "fuelPerUse": 1 },
+  { "id": "harvester", "name": "Harvester", "cost": 12000, "unlockLevel": 18, "actions": ["harvest"], "area": 2, "fuelPerUse": 1 },
+  { "id": "combine", "name": "Combine", "cost": 40000, "unlockLevel": 30, "actions": ["harvest", "plow", "plant"], "area": 3, "fuelPerUse": 2 }
+]

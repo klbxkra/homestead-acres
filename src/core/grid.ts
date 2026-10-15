@@ -11,15 +11,17 @@ export interface Rect {
   h: number;
 }
 
+/** Footprint size of any placeable item (decorations, trees, animals, buildings). */
 export function itemSize(itemId: string, rotated: boolean, content: Content): { w: number; h: number } | null {
-  const item = lookup(content.decorations, itemId);
+  const item = lookup(content.placeables, itemId);
   if (!item) return null;
   return rotated ? { w: item.height, h: item.width } : { w: item.width, h: item.height };
 }
 
 export function footprintOf(entity: Entity, content: Content): Rect {
   if (entity.kind === 'plot') return { x: entity.x, y: entity.y, w: 1, h: 1 };
-  const size = itemSize(entity.itemId, entity.rotated, content) ?? { w: 1, h: 1 };
+  const rotated = entity.kind === 'decoration' || entity.kind === 'building' ? entity.rotated : false;
+  const size = itemSize(entity.itemId, rotated, content) ?? { w: 1, h: 1 };
   return { x: entity.x, y: entity.y, ...size };
 }
 

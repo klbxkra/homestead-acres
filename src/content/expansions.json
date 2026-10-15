@@ -1,0 +1,7 @@
+[
+  { "size": 14, "unlockLevel": 5, "cost": 5000 },
+  { "size": 16, "unlockLevel": 10, "cost": 25000 },
+  { "size": 18, "unlockLevel": 16, "cost": 75000 },
+  { "size": 20, "unlockLevel": 22, "cost": 200000 },
+  { "size": 22, "unlockLevel": 30, "cost": 500000 }
+]

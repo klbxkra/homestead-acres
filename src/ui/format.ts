@@ -3,10 +3,12 @@ import {
   cropHarvestCoins,
   cropStatus,
   cropWitherAt,
-  decorationRefund,
   entityAt,
+  itemRefund,
   lookup,
+  nextReadyAt,
   plowCost,
+  productionYield,
 } from '../core';
 import type { FarmState, WorldRules } from '../core';
 
@@ -60,10 +62,38 @@ export function describeTile(
 
   if (!entity) return { title: 'Grass', lines: [`Plow for ${plowCost(content, rules)} coins`] };
 
-  if (entity.kind === 'decoration') {
-    const item = lookup(content.decorations, entity.itemId);
+  if (entity.kind !== 'plot') {
+    const item = lookup(content.placeables, entity.itemId);
     if (!item) return { title: 'Unknown item', lines: [] };
-    return { title: item.name, lines: [`Sells for ${decorationRefund(item, content, rules)} coins`] };
+    const refund = itemRefund(item, content, rules);
+    const sells = refund > 0 ? `Sells for ${formatNumber(refund)} coins` : 'Reward item';
+
+    if (entity.kind === 'tree' || entity.kind === 'animal') {
+      const def = entity.kind === 'tree' ? lookup(content.trees, entity.itemId) : lookup(content.animals, entity.itemId);
+      const pays = def ? productionYield(def, rules) : 0;
+      if (gameNow >= entity.readyAt) return { title: `${item.name}: ready!`, lines: [`Collect for ${formatNumber(pays)} coins`] };
+      return { title: item.name, lines: [`Ready in ${real(entity.readyAt - gameNow)}`, `Pays ${formatNumber(pays)} coins`] };
+    }
+
+    if (entity.kind === 'building') {
+      const def = lookup(content.buildings, entity.itemId);
+      const lines: string[] = [];
+      if (def && def.houses.length) {
+        const ready = entity.housed.filter((a) => a.readyAt <= gameNow).length;
+        const names = def.houses.map((id) => lookup(content.animals, id)?.name ?? id).join(', ');
+        lines.push(`${entity.housed.length} / ${def.capacity} animals (${names})`);
+        if (ready > 0) lines.push(`${ready} ready to collect`);
+        else {
+          const next = nextReadyAt(entity);
+          lines.push(next === null ? 'Drop animals here to move them in' : `Next ready in ${real(next - gameNow)}`);
+        }
+      }
+      if (def?.storage) lines.push(`Adds ${def.storage} storage slots`);
+      lines.push(sells);
+      return { title: item.name, lines };
+    }
+
+    return { title: item.name, lines: [sells] };
   }
 
   if (!entity.crop) {
