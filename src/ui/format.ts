@@ -1,6 +1,6 @@
 import type { Content } from '../content';
 import {
-  cropHarvestCoins,
+  cropHarvestValue,
   cropStatus,
   cropWitherAt,
   entityAt,
@@ -36,6 +36,11 @@ export function formatDuration(ms: number): string {
   const d = Math.floor(t / DAY);
   const h = Math.floor((t % DAY) / HOUR);
   return h ? `${d}d ${h}h` : `${d}d`;
+}
+
+/** "a Brick", "an Unwither Tonic". */
+export function withArticle(name: string): string {
+  return `${/^[aeiou]/i.test(name) ? 'an' : 'a'} ${name}`;
 }
 
 export function formatNumber(n: number): string {
@@ -77,18 +82,26 @@ export function describeTile(
 
     if (entity.kind === 'building') {
       const def = lookup(content.buildings, entity.itemId);
+      if (entity.parts && def?.construction) {
+        const need = Object.values(def.construction).reduce((a, b) => a + b, 0);
+        const have = Object.values(entity.parts).reduce((a, b) => a + b, 0);
+        return { title: `${item.name} (under construction)`, lines: [`${have} / ${need} parts`, 'Tap with the multi-tool to add parts'] };
+      }
       const lines: string[] = [];
       if (def && def.houses.length) {
         const ready = entity.housed.filter((a) => a.readyAt <= gameNow).length;
-        const names = def.houses.map((id) => lookup(content.animals, id)?.name ?? id).join(', ');
-        lines.push(`${entity.housed.length} / ${def.capacity} animals (${names})`);
+        const forTrees = def.houses.every((id) => lookup(content.trees, id));
+        const what = forTrees ? 'trees' : 'animals';
+        const names = forTrees ? 'any fruit tree' : def.houses.map((id) => lookup(content.animals, id)?.name ?? id).join(', ');
+        lines.push(`${entity.housed.length} / ${def.capacity} ${what} (${names})`);
         if (ready > 0) lines.push(`${ready} ready to collect`);
         else {
           const next = nextReadyAt(entity);
-          lines.push(next === null ? 'Drop animals here to move them in' : `Next ready in ${real(next - gameNow)}`);
+          lines.push(next === null ? `Drop ${what} here to move them in` : `Next ready in ${real(next - gameNow)}`);
         }
       }
       if (def?.storage) lines.push(`Adds ${def.storage} storage slots`);
+      if (def?.fuelBonus) lines.push(`Fuel tank +${def.fuelBonus}`);
       lines.push(sells);
       return { title: item.name, lines };
     }
@@ -105,8 +118,10 @@ export function describeTile(
   const crop = lookup(content.crops, entity.crop.cropId);
   const name = crop?.name ?? 'Unknown crop';
   const status = cropStatus(entity.crop, gameNow, rules);
+  const fertilized = entity.crop.fertilized === true;
+  const bonus = `Fertilized: +${Math.round(content.base.fertilizeBonus * 100)}% coins`;
   if (status === 'growing') {
-    return { title: name, lines: [`Ready in ${real(entity.crop.readyAt - gameNow)}`] };
+    return { title: name, lines: [`Ready in ${real(entity.crop.readyAt - gameNow)}`, ...(fertilized ? [bonus] : [])] };
   }
   if (status === 'withered') return { title: `${name} (withered)`, lines: ['Plow over it to clear the plot'] };
 
@@ -114,7 +129,7 @@ export function describeTile(
   return {
     title: `${name}: ripe!`,
     lines: [
-      `Harvest for ${crop ? cropHarvestCoins(crop, rules) : 0} coins`,
+      `Harvest for ${crop ? cropHarvestValue(crop, rules, fertilized, content) : 0} coins${fertilized ? ' (fertilized)' : ''}`,
       witherAt === null ? 'Never withers' : `Withers in ${real(witherAt - gameNow)}`,
     ],
   };

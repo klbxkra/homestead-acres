@@ -125,12 +125,12 @@ describe('farm expansion', () => {
     h.cheat({ level: 5, coins: 4000 });
     h.fails({ type: 'expandFarm' }, 'insufficient_coins');
     h.cheat({ level: 50, coins: 10_000_000 });
-    for (const size of [14, 16, 18, 20, 22]) {
+    for (const size of [14, 16, 18, 20, 22, 24, 26]) {
       h.ok({ type: 'expandFarm' });
       expect(h.farm.width).toBe(size);
       expect(h.farm.height).toBe(size);
     }
     h.fails({ type: 'expandFarm' }, 'max_size');
-    h.ok({ type: 'plow', x: 21, y: 21 });
+    h.ok({ type: 'plow', x: 25, y: 25 });
   });
 });

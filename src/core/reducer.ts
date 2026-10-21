@@ -2,22 +2,26 @@
  * The single place game state changes (PLAN.md principle 2):
  * applyCommand(state, envelope, realNow, content) -> new state + events, or a rejection.
  * Input state is never mutated. Same inputs always produce the same output.
- * Command handlers live in fieldwork / production / items / rewards / vehicles / daily.
+ * Command handlers live in fieldwork / production / items / rewards / vehicles /
+ * daily / neighbors / contracts / supplies.
  */
 import type { Content } from '../content';
 import type { Command, CommandEnvelope, CommandError } from './commands';
 import { reject, Rejection, tile } from './context';
 import type { Ctx } from './context';
 import { cropStatus } from './crops';
+import { abandonContract, claimContract, startContract } from './contracts';
 import { claimDailyBonus, expandFarm } from './daily';
 import type { GameEvent } from './events';
 import { plant, plow } from './fieldwork';
 import { lookup } from './ids';
 import { buy, move, placeFromInventory, sellEntity, sellFromInventory, store } from './items';
+import { acceptGifts, helpNeighbor, updateWorld, worldNeedsUpdate } from './neighbors';
 import { harvestAt } from './production';
 import { turnInCollection } from './rewards';
 import { validateRules } from './rules';
 import type { FarmState, GameState, PlayerState } from './state';
+import { addParts, buySupply, useSupply } from './supplies';
 import { advanceClock } from './time';
 import { buyVehicle, refuel, useVehicle } from './vehicles';
 
@@ -43,7 +47,9 @@ export function applyCommand(
     const player = lookup(next.players, envelope.playerId) ?? reject('unknown_player', 'No such player.');
     const farm = lookup(next.farms, envelope.farmId) ?? reject('unknown_farm', 'No such farm.');
     if (!canAct(farm, player)) reject('not_allowed', 'You can only change your own farm.');
-    execute(envelope.command, { state: next, farm, player, rules: next.rules, content, now: next.clock.gameNow, events });
+    const ctx: Ctx = { state: next, farm, player, rules: next.rules, content, now: next.clock.gameNow, events };
+    updateWorld(ctx); // neighbour activity for any game days that have begun
+    execute(envelope.command, ctx);
     return { ok: true, state: next, events };
   } catch (e) {
     if (e instanceof Rejection) return { ok: false, state, error: { code: e.code, message: e.message } };
@@ -51,12 +57,21 @@ export function applyCommand(
   }
 }
 
-/** Advances time without a command (called by the game loop and on resume). */
-export function tick(state: GameState, realNow: number): GameState {
+/**
+ * Advances time without a command (called by the game loop and on resume).
+ * When a new game day has begun, neighbour activity runs too.
+ */
+export function tick(state: GameState, realNow: number, content: Content): GameState {
   if (realNow <= state.clock.realNow) return state;
   const next = { ...state, clock: { ...state.clock } };
   advanceClock(next.clock, realNow, next.rules);
-  return next;
+  if (!worldNeedsUpdate(next)) return next;
+  const world = structuredClone(next);
+  for (const player of Object.values(world.players)) {
+    const farm = Object.values(world.farms).find((f) => f.ownerId === player.id);
+    if (farm) updateWorld({ state: world, farm, player, rules: world.rules, content, now: world.clock.gameNow, events: [] });
+  }
+  return world;
 }
 
 /** Co-op seam: who may act on a farm. Single-player: only its owner. */
@@ -100,6 +115,22 @@ function execute(command: Command, ctx: Ctx): void {
       return claimDailyBonus(ctx);
     case 'setRules':
       return setRules(ctx, command.rules);
+    case 'helpNeighbor':
+      return helpNeighbor(ctx, String(command.neighborId), tile(command.x, command.y));
+    case 'acceptGifts':
+      return acceptGifts(ctx, command.mailIds);
+    case 'buySupply':
+      return buySupply(ctx, command.itemId, command.count ?? 1);
+    case 'useSupply':
+      return useSupply(ctx, command.itemId, command.x, command.y);
+    case 'addParts':
+      return addParts(ctx, command.entityId);
+    case 'startContract':
+      return startContract(ctx, command.contractId, command.partners ?? []);
+    case 'claimContract':
+      return claimContract(ctx);
+    case 'abandonContract':
+      return abandonContract(ctx);
     default:
       reject('invalid', `Unknown command type "${(command as { type?: unknown }).type}".`);
   }

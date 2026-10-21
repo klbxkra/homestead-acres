@@ -56,8 +56,32 @@ export const buildingSchema = z
     capacity: z.number().int().nonnegative().default(0),
     /** Extra storage slots while placed on the farm. */
     storage: z.number().int().nonnegative().default(0),
+    /** Extra fuel tank capacity while placed (garages). */
+    fuelBonus: z.number().int().nonnegative().default(0),
+    /** Construction buildings: bought as a frame, finished with these parts (part id -> count). */
+    construction: z.record(id, z.number().int().positive()).optional(),
   })
   .refine((b) => b.houses.length === 0 || b.capacity > 0, 'housing buildings need a capacity');
+
+/** Consumable supplies and building parts. Kept in the gift box, never placed on the farm. */
+export const supplySchema = z
+  .object({
+    id,
+    name: z.string().min(1),
+    kind: z.enum(['part', 'fertilizer', 'instagrow', 'unwither', 'fuel']),
+    description: z.string().default(''),
+    unlockLevel: level.default(1),
+    /** Price in the market's Supplies tab: coins (scaled by buyCost) or Farm Cash. */
+    coins: coins.optional(),
+    cash: coins.optional(),
+    /** Fertilizer / Instagrow: works on an area x area square. */
+    area: z.number().int().min(1).max(5).optional(),
+    /** Fuel cans: fuel added. */
+    amount: z.number().positive().optional(),
+  })
+  .refine((s) => (s.coins ?? 0) > 0 || (s.cash ?? 0) > 0, 'supplies need a coin or cash price')
+  .refine((s) => (s.kind !== 'fertilizer' && s.kind !== 'instagrow') || s.area !== undefined, 'area supplies need an area')
+  .refine((s) => s.kind !== 'fuel' || s.amount !== undefined, 'fuel supplies need an amount');
 
 export const vehicleSchema = z.object({
   id,
@@ -80,7 +104,7 @@ export const ribbonSchema = z.object({
   tiers: z.array(z.number().positive()).length(4),
 });
 
-const rewardSchema = z.object({
+export const rewardSchema = z.object({
   coins: coins.default(0),
   xp: z.number().nonnegative().default(0),
   cash: coins.default(0),
@@ -96,8 +120,37 @@ export const collectionSchema = z.object({
     trees: z.boolean().default(false),
     animals: z.boolean().default(false),
     plow: z.boolean().default(false),
+    /** Helping on AI neighbours' farms. */
+    neighbors: z.boolean().default(false),
   }),
   reward: rewardSchema,
+});
+
+/** Solo co-op jobs (PLAN.md section 4.8): grow these crops before time runs out. */
+export const contractSchema = z.object({
+  id,
+  name: z.string().min(1),
+  description: z.string().default(''),
+  unlockLevel: level,
+  durationHours: hours,
+  goals: z.array(z.object({ cropId: id, count: z.number().int().positive() })).min(1),
+  /** Gold-medal reward; silver and bronze pay a fraction (base.contracts). */
+  reward: rewardSchema,
+});
+
+/** Name, avatar and colour pools for generated AI neighbours. */
+export const neighborPoolSchema = z.object({
+  names: z.array(z.string().min(1)).min(1),
+  avatars: z.array(z.string().min(1)).min(1),
+  colors: z.array(z.string().regex(/^#[0-9a-f]{6}$/i)).min(1),
+});
+
+/** What AI neighbours send as gifts. */
+export const giftSchema = z.object({
+  itemId: id,
+  weight: z.number().positive(),
+  unlockLevel: level.default(1),
+  count: z.number().int().positive().default(1),
 });
 
 export const levelsSchema = z
@@ -136,6 +189,33 @@ export const baseSchema = z.object({
     streakWindowHours: hours,
     days: z.array(rewardSchema).min(1),
   }),
+  /** Extra coins from a fertilized crop, as a fraction of its sale price. */
+  fertilizeBonus: z.number().nonnegative(),
+  /** Chance per housed animal collected that a baby arrives in the gift box (x collectibleDropRate). */
+  babyChance: z.number().min(0).max(1),
+  neighbors: z.object({
+    /** Chance each AI neighbour visits your farm on a given game day. */
+    visitChance: z.number().min(0).max(1),
+    fertilizePerVisit: z.number().int().nonnegative(),
+    helpCoins: coins,
+    helpXp: z.number().nonnegative(),
+    mailboxMax: z.number().int().positive(),
+    /** Most game days of neighbour activity caught up after a long absence. */
+    backlogDays: z.number().int().positive(),
+    logMax: z.number().int().positive(),
+    /** Neighbour level = player level + an offset in this range. */
+    levelOffset: z.tuple([z.number().int(), z.number().int()]),
+  }),
+  contracts: z.object({
+    /** Share of each goal an AI partner grows per game day. */
+    partnerDailyShare: z.number().min(0).max(1),
+    maxPartners: z.number().int().nonnegative(),
+    /** Finish within this fraction of the time for gold / silver; bronze is anything before the deadline. */
+    goldWithin: z.number().min(0).max(1),
+    silverWithin: z.number().min(0).max(1),
+    silverRewardFactor: z.number().min(0).max(1),
+    bronzeRewardFactor: z.number().min(0).max(1),
+  }),
 });
 
 export type Reward = z.infer<typeof rewardSchema>;
@@ -153,6 +233,11 @@ export type VehicleAction = VehicleDef['actions'][number];
 export type ExpansionDef = z.infer<typeof expansionSchema>;
 export type RibbonDef = z.infer<typeof ribbonSchema>;
 export type CollectionDef = z.infer<typeof collectionSchema>;
+export type SupplyDef = z.infer<typeof supplySchema>;
+export type SupplyKind = SupplyDef['kind'];
+export type ContractDef = z.infer<typeof contractSchema>;
+export type NeighborPoolDef = z.infer<typeof neighborPoolSchema>;
+export type GiftDef = z.infer<typeof giftSchema>;
 export type LevelsDef = z.infer<typeof levelsSchema>;
 export type BaseDef = z.infer<typeof baseSchema>;
 
@@ -179,6 +264,8 @@ export interface Content {
   animals: Readonly<Record<string, AnimalDef>>;
   buildings: Readonly<Record<string, BuildingDef>>;
   vehicles: Readonly<Record<string, VehicleDef>>;
+  /** Consumables and building parts. */
+  supplies: Readonly<Record<string, SupplyDef>>;
   /** Placeables of every kind, for code that doesn't care which kind. */
   placeables: Readonly<Record<string, PlaceableInfo>>;
   /** Sorted by size. */
@@ -187,6 +274,9 @@ export interface Content {
   collections: readonly CollectionDef[];
   /** Collectible id -> its collection id. */
   collectibleSet: Readonly<Record<string, string>>;
+  contracts: readonly ContractDef[];
+  neighborPool: NeighborPoolDef;
+  gifts: readonly GiftDef[];
   levels: LevelsDef;
   base: BaseDef;
 }

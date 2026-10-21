@@ -28,7 +28,21 @@ export type Command =
   | { type: 'turnInCollection'; collectionId: string }
   | { type: 'claimDailyBonus' }
   /** Replace the world rules. Untrusted input: validated by the reducer. */
-  | { type: 'setRules'; rules: unknown };
+  | { type: 'setRules'; rules: unknown }
+  /** Help with something on an AI neighbour's farm while visiting it. */
+  | { type: 'helpNeighbor'; neighborId: string; x: number; y: number }
+  /** Move neighbours' gifts from the mailbox into the gift box (all of them when mailIds is left out). */
+  | { type: 'acceptGifts'; mailIds?: string[] }
+  /** Buy supplies or building parts into the gift box. */
+  | { type: 'buySupply'; itemId: string; count?: number }
+  /** Use a supply from the gift box; area supplies target the square whose top corner is (x, y). */
+  | { type: 'useSupply'; itemId: string; x?: number; y?: number }
+  /** Add building parts from the gift box to an unfinished construction building. */
+  | { type: 'addParts'; entityId: EntityId }
+  | { type: 'startContract'; contractId: string; partners?: string[] }
+  /** Collect the reward for a finished co-op job, or clear an expired one. */
+  | { type: 'claimContract' }
+  | { type: 'abandonContract' };
 
 export type CommandType = Command['type'];
 
@@ -67,7 +81,9 @@ export type CommandErrorCode =
   | 'nothing_to_do'
   | 'max_size'
   | 'incomplete'
-  | 'not_ready';
+  | 'not_ready'
+  | 'limit_reached'
+  | 'busy';
 
 export interface CommandError {
   code: CommandErrorCode;

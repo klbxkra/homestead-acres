@@ -51,6 +51,37 @@ export function DailyBonus({ gameApp, session }: { gameApp: GameApp; session: Se
   );
 }
 
+/**
+ * Toasts when neighbors send gifts or drop by while you're playing (the
+ * welcome-back popup covers what happened while you were away).
+ */
+export function NeighborNews({ session }: { session: Session }) {
+  const { transport, ui } = session;
+  useEffect(() => {
+    let prev = transport.getState();
+    return transport.subscribe((next) => {
+      const before = prev.players[prev.localPlayerId]!.social;
+      const after = next.players[next.localPlayerId]!.social;
+      const beforeNow = prev.clock.gameNow;
+      prev = next;
+      if (before === after || after.neighbors.length === 0) return;
+      const names = new Map(after.neighbors.map((n) => [n.id, n.name]));
+      const oldMail = new Set(before.mailbox.map((m) => m.id));
+      // Daily gifts are stamped with the start of their day; thank-you and welcome
+      // gifts with "now", and those are announced by whatever caused them.
+      const sent = after.mailbox.filter((m) => !oldMail.has(m.id) && m.sentAt < next.clock.gameNow);
+      if (sent.length === 1) toast(ui, `📬 ${names.get(sent[0]!.neighborId) ?? 'A neighbor'} sent you a gift!`, 'info');
+      else if (sent.length > 1) toast(ui, `📬 ${sent.length} new gifts from your neighbors!`, 'info');
+      // Visits are stamped with the start of a day that began after the last update.
+      for (const e of after.log.filter((x) => x.at > beforeNow).slice(-2)) {
+        const who = names.get(e.neighborId) ?? 'A neighbor';
+        toast(ui, e.kind === 'fertilized' ? `🌿 ${who} fertilized ${e.count} of your crops.` : `🐔 ${who} fed ${e.count} of your animals.`, 'info');
+      }
+    });
+  }, [transport, ui]);
+  return null;
+}
+
 const NOTICE_MS = 7000;
 
 /** App-level messages (load problems, import results), shown on any screen. */
@@ -108,6 +139,17 @@ export function WelcomeBack({ gameApp }: { gameApp: GameApp }) {
             )}
             {welcome.ripened === 0 && welcome.withered === 0 && <p>Everything is still growing.</p>}
           </>
+        )}
+        {welcome.visits.length > 0 && (
+          <p>
+            👥 {welcome.visits.slice(0, 3).join('; ')}
+            {welcome.visits.length > 3 && <span class="muted"> and {welcome.visits.length - 3} more visits</span>}.
+          </p>
+        )}
+        {welcome.newGifts > 0 && (
+          <p>
+            📬 <b>{welcome.newGifts}</b> {welcome.newGifts === 1 ? 'gift is' : 'gifts are'} waiting in your mailbox (👥 Neighbors).
+          </p>
         )}
         <div class="dialog-buttons">
           <button type="button" class="btn btn-primary" onClick={() => gameApp.dismissWelcome()}>

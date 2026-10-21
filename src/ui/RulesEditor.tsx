@@ -177,12 +177,48 @@ export function RulesEditor({ rules, onChange, mode, content, onError }: RulesEd
           onChange={(fuelRegenPerHour) => update({ fuelRegenPerHour })}
         />
         <StopSlider
-          label="Collectible finds"
-          hint="How often collectibles turn up while farming."
+          label="Lucky finds"
+          hint="How often collectibles turn up, and animals in buildings have babies."
           stops={STOPS.reward}
           value={rules.collectibleDropRate}
           format={formatMultiplier}
           onChange={(collectibleDropRate) => update({ collectibleDropRate })}
+        />
+      </section>
+
+      <section>
+        <h3>Neighbors & co-op jobs</h3>
+        <StopSlider
+          label="AI neighbors"
+          hint="Farmers next door who send gifts, visit, and help with co-op jobs."
+          stops={STOPS.aiNeighborCount}
+          value={rules.aiNeighborCount}
+          format={(v) => (v === 0 ? 'None' : String(v))}
+          onChange={(aiNeighborCount) => update({ aiNeighborCount })}
+        />
+        <StopSlider
+          label="Gifts per game day"
+          hint="From all neighbors together (thank-you gifts for helping come on top)."
+          stops={STOPS.aiGiftsPerDay}
+          value={rules.aiGiftsPerDay}
+          format={(v) => (v === 0 ? 'No gifts' : String(v))}
+          onChange={(aiGiftsPerDay) => update({ aiGiftsPerDay })}
+        />
+        <StopSlider
+          label="Helps per neighbor per day"
+          hint="How many times you can help on each neighbor's farm."
+          stops={STOPS.neighborHelpsPerDay}
+          value={rules.neighborHelpsPerDay}
+          format={(v) => String(v)}
+          onChange={(neighborHelpsPerDay) => update({ neighborHelpsPerDay })}
+        />
+        <StopSlider
+          label="Co-op job time limits"
+          hint={mode === 'farm' ? 'Applies to jobs started from now on.' : 'Higher gives more time.'}
+          stops={STOPS.contractTime}
+          value={rules.contractTime}
+          format={formatMultiplier}
+          onChange={(contractTime) => update({ contractTime })}
         />
       </section>
 

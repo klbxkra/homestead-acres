@@ -63,5 +63,31 @@
     ],
     "sources": { "trees": true },
     "reward": { "coins": 2500, "xp": 125, "cash": 2, "itemId": "golden_apple_statue" }
+  },
+  {
+    "id": "neighborly_notes",
+    "name": "Neighborly Notes",
+    "items": [
+      { "id": "thank_you_note", "name": "Thank-you Note" },
+      { "id": "pie_recipe", "name": "Pie Recipe" },
+      { "id": "pressed_flower", "name": "Pressed Flower" },
+      { "id": "pen_pal_letter", "name": "Pen-pal Letter" },
+      { "id": "friendship_bracelet", "name": "Friendship Bracelet" }
+    ],
+    "sources": { "neighbors": true },
+    "reward": { "coins": 2000, "xp": 100, "itemId": "friendship_bench" }
+  },
+  {
+    "id": "kitchen_garden",
+    "name": "Kitchen Garden",
+    "items": [
+      { "id": "wooden_spoon", "name": "Wooden Spoon" },
+      { "id": "recipe_card", "name": "Recipe Card" },
+      { "id": "copper_pot", "name": "Copper Pot" },
+      { "id": "salt_shaker", "name": "Salt Shaker" },
+      { "id": "apron", "name": "Apron" }
+    ],
+    "sources": { "crops": ["tomato", "onion", "pepper", "broccoli", "asparagus", "artichoke", "coffee", "green_tea"] },
+    "reward": { "coins": 3000, "xp": 150, "cash": 1, "itemId": "copper_kettle" }
   }
 ]

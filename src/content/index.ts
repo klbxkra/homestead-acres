@@ -4,11 +4,15 @@ import {
   baseSchema,
   buildingSchema,
   collectionSchema,
+  contractSchema,
   cropSchema,
   decorationSchema,
   expansionSchema,
+  giftSchema,
   levelsSchema,
+  neighborPoolSchema,
   ribbonSchema,
+  supplySchema,
   treeSchema,
   vehicleSchema,
 } from './schema';
@@ -17,11 +21,15 @@ import animals from './animals.json';
 import base from './base.json';
 import buildings from './buildings.json';
 import collections from './collections.json';
+import contracts from './contracts.json';
 import crops from './crops.json';
 import decorations from './decorations.json';
 import expansions from './expansions.json';
+import gifts from './gifts.json';
 import levels from './levels.json';
+import neighbors from './neighbors.json';
 import ribbons from './ribbons.json';
+import supplies from './supplies.json';
 import trees from './trees.json';
 import vehicles from './vehicles.json';
 
@@ -39,6 +47,10 @@ export interface RawContent {
   expansions: unknown;
   ribbons: unknown;
   collections: unknown;
+  supplies: unknown;
+  contracts: unknown;
+  neighbors: unknown;
+  gifts: unknown;
   levels: unknown;
   base: unknown;
 }
@@ -55,19 +67,36 @@ export function buildContent(raw: RawContent): Content {
   const expansionList = parse('expansions', z.array(expansionSchema), raw.expansions);
   const ribbonList = parse('ribbons', z.array(ribbonSchema), raw.ribbons);
   const collectionList = parse('collections', z.array(collectionSchema), raw.collections);
+  const supplyList = parse('supplies', z.array(supplySchema), raw.supplies);
+  const contractList = parse('contracts', z.array(contractSchema), raw.contracts);
+  const neighborPool = parse('neighbors', neighborPoolSchema, raw.neighbors);
+  const giftList = parse('gifts', z.array(giftSchema), raw.gifts);
 
   // Item ids share one namespace (inventories and overrides are keyed by id).
-  const itemIds = [...cropList, ...decorationList, ...treeList, ...animalList, ...buildingList, ...vehicleList].map((i) => i.id);
+  const itemIds = [...cropList, ...decorationList, ...treeList, ...animalList, ...buildingList, ...vehicleList, ...supplyList].map((i) => i.id);
   assertUnique(itemIds, 'item id');
   assertUnique(ribbonList.map((r) => r.id), 'ribbon id');
   assertUnique(collectionList.map((c) => c.id), 'collection id');
+  assertUnique(contractList.map((c) => c.id), 'contract id');
   const collectibleIds = collectionList.flatMap((c) => c.items.map((i) => i.id));
   assertUnique(collectibleIds, 'collectible id');
 
   const known = new Set(itemIds);
   const animalIds = new Set(animalList.map((a) => a.id));
+  const treeIds = new Set(treeList.map((t) => t.id));
   const cropIds = new Set(cropList.map((c) => c.id));
-  for (const b of buildingList) for (const a of b.houses) if (!animalIds.has(a)) fail(`building ${b.id} houses unknown animal "${a}"`);
+  const partIds = new Set(supplyList.filter((p) => p.kind === 'part').map((p) => p.id));
+  for (const b of buildingList) {
+    for (const a of b.houses) if (!animalIds.has(a) && !treeIds.has(a)) fail(`building ${b.id} houses unknown animal or tree "${a}"`);
+    for (const part of Object.keys(b.construction ?? {})) if (!partIds.has(part)) fail(`building ${b.id} needs unknown part "${part}"`);
+  }
+  for (const c of contractList) {
+    for (const g of c.goals) if (!cropIds.has(g.cropId)) fail(`contract ${c.id} asks for unknown crop "${g.cropId}"`);
+    if (c.reward.itemId && !known.has(c.reward.itemId)) fail(`contract ${c.id} rewards unknown item "${c.reward.itemId}"`);
+  }
+  for (const g of giftList) {
+    if (!known.has(g.itemId) || cropIds.has(g.itemId) || vehicleList.some((v) => v.id === g.itemId)) fail(`gift "${g.itemId}" is not a placeable item or supply`);
+  }
   for (const c of collectionList) {
     for (const crop of c.sources.crops) if (!cropIds.has(crop)) fail(`collection ${c.id} lists unknown crop "${crop}"`);
     if (c.reward.itemId && !known.has(c.reward.itemId)) fail(`collection ${c.id} rewards unknown item "${c.reward.itemId}"`);
@@ -95,6 +124,10 @@ export function buildContent(raw: RawContent): Content {
     ribbons: ribbonList,
     collections: collectionList,
     collectibleSet: Object.fromEntries(collectionList.flatMap((c) => c.items.map((i) => [i.id, c.id]))),
+    supplies: byId(supplyList),
+    contracts: contractList,
+    neighborPool,
+    gifts: giftList,
     levels: parse('levels', levelsSchema, raw.levels),
     base: baseDef,
   };
@@ -145,6 +178,10 @@ export const defaultContent: Content = buildContent({
   expansions,
   ribbons,
   collections,
+  supplies,
+  contracts,
+  neighbors,
+  gifts,
   levels,
   base,
 });

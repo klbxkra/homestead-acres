@@ -1,5 +1,5 @@
 /** Trees, animals and animal buildings: produce on a cycle, never wither (PLAN.md 4.3-4.4). */
-import { inBounds, reject } from './context';
+import { bump, inBounds, reject, roll } from './context';
 import type { Ctx, Tile } from './context';
 import { animalCycleMs, productionYield, treeCycleMs } from './economy';
 import { harvestCrop } from './fieldwork';
@@ -53,31 +53,54 @@ function collectAnimal(ctx: Ctx, animal: AnimalEntity): void {
   rollCollectibles(ctx, { animal: true }, animal);
 }
 
+/**
+ * Collects every ready animal (or tree, in an orchard) living in a building at
+ * once. Each housed animal collected has a small chance of a baby, which
+ * arrives in the gift box.
+ */
 function collectBuilding(ctx: Ctx, building: BuildingEntity): void {
+  if (building.parts !== undefined) reject('nothing_to_do', 'This building is still under construction. Add parts to finish it.');
   const ready = building.housed.filter((a) => a.readyAt <= ctx.now);
   if (ready.length === 0) {
-    reject(building.housed.length ? 'not_ripe' : 'nothing_to_do', building.housed.length ? 'Nothing to collect yet.' : 'No animals live here yet.');
+    reject(building.housed.length ? 'not_ripe' : 'nothing_to_do', building.housed.length ? 'Nothing to collect yet.' : 'Nothing lives here yet.');
   }
+  const { content, rules } = ctx;
   let coins = 0;
+  let animals = 0;
+  let trees = 0;
   for (const a of ready) {
-    const def = lookup(ctx.content.animals, a.itemId);
+    const tree = lookup(content.trees, a.itemId);
+    const animal = tree ? undefined : lookup(content.animals, a.itemId);
+    const def = tree ?? animal;
     if (!def) continue;
-    coins += productionYield(def, ctx.rules);
-    a.readyAt = ctx.now + animalCycleMs(def, ctx.rules);
+    coins += productionYield(def, rules);
+    a.readyAt = ctx.now + (tree ? treeCycleMs(tree, rules) : animalCycleMs(animal!, rules));
+    if (tree) trees++;
+    else animals++;
   }
   ctx.player.coins += coins;
   const itemId = ready[0]!.itemId;
   ctx.events.push({ type: 'collected', x: building.x, y: building.y, entityId: building.id, itemId, coins, count: ready.length });
-  gainXp(ctx.player, ctx.content.base.animalHarvestXp * ready.length * ctx.rules.xpGain, ctx.content.levels, ctx.rules, ctx.events);
-  addCounter(ctx, 'animalsCollected', ready.length);
+  const xp = content.base.animalHarvestXp * animals + content.base.treeHarvestXp * trees;
+  gainXp(ctx.player, xp * rules.xpGain, content.levels, rules, ctx.events);
+  addCounter(ctx, 'animalsCollected', animals);
+  addCounter(ctx, 'treesHarvested', trees);
   addCounter(ctx, 'coinsEarned', coins);
-  rollCollectibles(ctx, { animal: true }, building);
+  if (animals) rollCollectibles(ctx, { animal: true }, building);
+  if (trees) rollCollectibles(ctx, { tree: true }, building);
+
+  const babyChance = Math.min(1, content.base.babyChance * rules.collectibleDropRate);
+  for (const a of ready) {
+    if (!lookup(content.animals, a.itemId) || !roll(ctx, babyChance)) continue;
+    bump(ctx.player.giftBox, a.itemId);
+    ctx.events.push({ type: 'itemReceived', itemId: a.itemId, reason: 'baby' });
+  }
 }
 
 /** For views, tooltips and the multi-tool: is there something to collect here? */
 export function isProducing(entity: Entity, gameNow: number): boolean {
   if (entity.kind === 'tree' || entity.kind === 'animal') return gameNow >= entity.readyAt;
-  if (entity.kind === 'building') return entity.housed.some((a) => a.readyAt <= gameNow);
+  if (entity.kind === 'building') return entity.parts === undefined && entity.housed.some((a) => a.readyAt <= gameNow);
   return false;
 }
 

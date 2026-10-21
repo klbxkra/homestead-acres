@@ -1,9 +1,9 @@
 import { useState } from 'preact/hooks';
 import type { Session } from '../app/session';
-import { startPlacing, toast } from '../app/uiState';
+import { startPlacing, startSupply, toast } from '../app/uiState';
 import { itemRefund, lookup, storageCapacity, storedCount } from '../core';
 import type { InventorySource } from '../core';
-import { itemArtCss } from '../game/art/artData';
+import { itemArtCss, itemIcon } from '../game/art/artData';
 import { formatNumber } from './format';
 import { useGameState, useStore } from './hooks';
 
@@ -23,6 +23,15 @@ export function InventoryPanel({ session }: { session: Session }) {
 
   const sell = (itemId: string) => {
     const result = transport.send({ type: 'sellItem', itemId, from: tab });
+    if (!result.ok) toast(ui, result.error.message, 'error');
+  };
+
+  /** Area supplies are aimed at the farm; the others work straight away. */
+  const use = (itemId: string) => {
+    const supply = lookup(content.supplies, itemId);
+    if (!supply) return;
+    if (supply.area) return startSupply(ui, itemId);
+    const result = transport.send({ type: 'useSupply', itemId });
     if (!result.ok) toast(ui, result.error.message, 'error');
   };
 
@@ -47,23 +56,35 @@ export function InventoryPanel({ session }: { session: Session }) {
           {items.length === 0 && (
             <p class="market-empty">
               {tab === 'giftBox'
-                ? 'Rewards from mastery, collections and ribbons arrive here.'
+                ? 'Rewards, gifts from neighbors and supplies you buy arrive here.'
                 : 'Use the 📦 store tool on anything on your farm to put it away here.'}
             </p>
           )}
           {items.map(([itemId, n]) => {
             const item = lookup(content.placeables, itemId);
+            const supply = lookup(content.supplies, itemId);
             const refund = item ? itemRefund(item, content, state.rules) : 0;
             return (
               <div key={itemId} class="card inventory-card">
-                <span class="swatch" style={{ background: itemArtCss(itemId) }} />
-                <span class="card-name">
-                  {item?.name ?? itemId} {n > 1 && <span class="badge">×{n}</span>}
+                <span class="swatch" style={{ background: itemArtCss(itemId) }}>
+                  {itemIcon(itemId)}
                 </span>
+                <span class="card-name">
+                  {item?.name ?? supply?.name ?? itemId} {n > 1 && <span class="badge">×{n}</span>}
+                </span>
+                {supply && <span class="card-line muted">{supply.kind === 'part' ? 'Building part: tap an unfinished building' : supply.description}</span>}
                 <div class="card-actions">
-                  <button type="button" class="btn btn-small btn-primary" disabled={!item} onClick={() => startPlacing(ui, itemId, tab)}>
-                    Place
-                  </button>
+                  {supply ? (
+                    supply.kind !== 'part' && (
+                      <button type="button" class="btn btn-small btn-primary" onClick={() => use(itemId)}>
+                        Use
+                      </button>
+                    )
+                  ) : (
+                    <button type="button" class="btn btn-small btn-primary" disabled={!item} onClick={() => startPlacing(ui, itemId, tab)}>
+                      Place
+                    </button>
+                  )}
                   <button type="button" class="btn btn-small" onClick={() => sell(itemId)} title={refund ? `Sell for ${refund} coins` : 'Discard'}>
                     {refund ? `Sell ${formatNumber(refund)}` : 'Discard'}
                   </button>

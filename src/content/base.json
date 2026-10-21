@@ -34,5 +34,25 @@
       { "coins": 250, "xp": 20 },
       { "coins": 400, "xp": 30, "cash": 1 }
     ]
+  },
+  "fertilizeBonus": 0.25,
+  "babyChance": 0.02,
+  "neighbors": {
+    "visitChance": 0.4,
+    "fertilizePerVisit": 4,
+    "helpCoins": 10,
+    "helpXp": 2,
+    "mailboxMax": 30,
+    "backlogDays": 7,
+    "logMax": 20,
+    "levelOffset": [-3, 6]
+  },
+  "contracts": {
+    "partnerDailyShare": 0.08,
+    "maxPartners": 2,
+    "goldWithin": 0.5,
+    "silverWithin": 0.75,
+    "silverRewardFactor": 0.6,
+    "bronzeRewardFactor": 0.35
   }
 }

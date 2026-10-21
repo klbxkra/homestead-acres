@@ -94,6 +94,24 @@ export const DECORATION_ART: Record<string, BoxArt> = {
   flower_arch: box(0xf48fb1, 30, 0.4),
   lucky_horseshoe: box(0xb0bec5, 16, 0.35),
   golden_apple_statue: box(0xffd700, 20, 0.45),
+  wooden_fence: box(0xa1704a, 12, 0.35),
+  mailbox: box(0x1e88e5, 18, 0.3),
+  tulip_bed: { height: 6, inset: 0.8, top: 0xff7043, left: 0x6d4c41, right: 0x5d4037 },
+  lamp_post: box(0x37474f, 34, 0.2, { roof: 0xfff59d, roofHeight: 6 }),
+  wheelbarrow: box(0x8d6e63, 10, 0.55),
+  rose_bush: box(0xd81b60, 14, 0.6, { left: 0x388e3c, right: 0x2e7d32 }),
+  hedge: box(0x558b2f, 14, 0.85),
+  picnic_table: box(0xbc8f5f, 10, 0.7),
+  wishing_well: box(0x9e9e9e, 14, 0.6, { roof: 0x8d6e63, roofHeight: 14 }),
+  birdbath: box(0x90caf9, 16, 0.4, { left: 0xbdbdbd, right: 0x9e9e9e }),
+  lily_pond: { height: 3, inset: 0.85, top: 0x4fc3f7, left: 0x8d6e63, right: 0x6d4c41 },
+  stone_wall: box(0x9e9e9e, 12, 0.9),
+  gazebo: box(0xfafafa, 22, 0.75, { roof: 0x2e7d32, roofHeight: 18 }),
+  flag_pole: box(0xe53935, 46, 0.15),
+  lighthouse: box(0xffffff, 56, 0.5, { roof: 0xc62828, roofHeight: 16 }),
+  friendship_bench: box(0xf06292, 10, 0.65),
+  copper_kettle: box(0xd84315, 12, 0.4),
+  gold_trophy: box(0xffd700, 22, 0.3),
 };
 
 export const BUILDING_ART: Record<string, BoxArt> = {
@@ -103,6 +121,9 @@ export const BUILDING_ART: Record<string, BoxArt> = {
   sheep_pen: box(0xa1887f, 14, 0.9, { roof: 0x558b2f, roofHeight: 10 }),
   barn: box(0xb71c1c, 30, 0.9, { roof: 0x5d4037, roofHeight: 22 }),
   stable: box(0x8d6e63, 22, 0.88, { roof: 0x37474f, roofHeight: 16 }),
+  orchard: { height: 8, inset: 0.95, top: 0x9ccc65, left: 0xa1704a, right: 0x8d6e63 },
+  garage: box(0xb0bec5, 22, 0.88, { roof: 0x455a64, roofHeight: 12 }),
+  duck_pond: { height: 4, inset: 0.9, top: 0x29b6f6, left: 0x8d6e63, right: 0x6d4c41 },
 };
 
 export const DEFAULT_BOX_ART: BoxArt = box(0xff66cc, 16, 0.8);
@@ -123,6 +144,10 @@ export const TREE_ART: Record<string, TreeArt> = {
   olive_tree: { canopy: 0x827717, fruit: 0x33691e },
   avocado_tree: { canopy: 0x33691e, fruit: 0x9ccc65 },
   fig_tree: { canopy: 0x558b2f, fruit: 0x6d4c41 },
+  pear_tree: { canopy: 0x7cb342, fruit: 0xd4e157 },
+  pomegranate_tree: { canopy: 0x388e3c, fruit: 0xb71c1c },
+  maple_tree: { canopy: 0xe65100, fruit: 0xffb300 },
+  coconut_palm: { canopy: 0x2e7d32, fruit: 0x795548 },
 };
 
 export const DEFAULT_TREE_ART: TreeArt = { canopy: 0x43a047, fruit: 0xffffff };
@@ -144,9 +169,25 @@ export const ANIMAL_ART: Record<string, AnimalArt> = {
   goat: { body: 0xd7ccc8, accent: 0x8d6e63, size: 0.9 },
   rabbit: { body: 0xbcaaa4, accent: 0xffffff, size: 0.55 },
   horse: { body: 0x8d6e63, accent: 0x4e342e, size: 1.3 },
+  turkey: { body: 0x6d4c41, accent: 0xe53935, size: 0.75 },
+  goose: { body: 0xeeeeee, accent: 0xff9800, size: 0.7 },
+  donkey: { body: 0x9e9e9e, accent: 0x424242, size: 1.1 },
+  llama: { body: 0xefe3c8, accent: 0x8d6e63, size: 1.15 },
 };
 
 export const DEFAULT_ANIMAL_ART: AnimalArt = { body: 0xff66cc, accent: 0x880e4f, size: 0.8 };
+
+/** Supplies and building parts: an emoji on a coloured swatch (they never stand on the farm). */
+export const SUPPLY_ART: Record<string, { icon: string; css: string }> = {
+  fertilizer: { icon: '🌿', css: '#c5e1a5' },
+  unwither_tonic: { icon: '💧', css: '#b3e5fc' },
+  instagrow: { icon: '⚡', css: '#fff59d' },
+  fuel_can: { icon: '⛽', css: '#ffcc80' },
+  nail: { icon: '🔩', css: '#cfd8dc' },
+  wooden_board: { icon: '🪵', css: '#d7ccc8' },
+  brick: { icon: '🧱', css: '#ffab91' },
+  shingle: { icon: '🏠', css: '#b0bec5' },
+};
 
 const VEHICLE_CSS: Record<string, string> = {
   tractor: '#d32f2f',
@@ -173,8 +214,14 @@ export function animalArt(itemId: string): AnimalArt {
   return Object.hasOwn(ANIMAL_ART, itemId) ? ANIMAL_ART[itemId]! : DEFAULT_ANIMAL_ART;
 }
 
+/** Emoji drawn on a swatch for items without farm art (supplies, parts), or null. */
+export function itemIcon(itemId: string): string | null {
+  return Object.hasOwn(SUPPLY_ART, itemId) ? SUPPLY_ART[itemId]!.icon : null;
+}
+
 /** A representative CSS colour for any item (market swatches, inventory). */
 export function itemArtCss(itemId: string): string {
+  if (Object.hasOwn(SUPPLY_ART, itemId)) return SUPPLY_ART[itemId]!.css;
   if (Object.hasOwn(TREE_ART, itemId)) return `radial-gradient(circle at 50% 40%, ${hex(TREE_ART[itemId]!.fruit)} 0 22%, ${hex(TREE_ART[itemId]!.canopy)} 24%)`;
   if (Object.hasOwn(ANIMAL_ART, itemId)) return hex(ANIMAL_ART[itemId]!.body === 0xffffff ? ANIMAL_ART[itemId]!.accent : ANIMAL_ART[itemId]!.body);
   if (Object.hasOwn(VEHICLE_CSS, itemId)) return VEHICLE_CSS[itemId]!;

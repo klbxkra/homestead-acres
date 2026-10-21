@@ -39,6 +39,12 @@ export function animalKey(itemId: string): string {
 }
 
 export const READY_MARKER_KEY = 'ready-marker';
+/** Green tick bubble: already helped with today (visiting a neighbour). */
+export const HELPED_MARKER_KEY = 'helped-marker';
+/** Hammer bubble over a construction building that still needs parts. */
+export const BUILD_MARKER_KEY = 'build-marker';
+/** Small sparkle on a fertilized crop. */
+export const FERTILIZED_BADGE_KEY = 'fertilized-badge';
 
 /** Trees and animals: 1x1 sprites taller than a tile; the tile centre sits at this y. */
 export const TALL_TEX_W = TILE_WIDTH;
@@ -82,6 +88,9 @@ export function generateTextures(scene: Phaser.Scene, content: Content): void {
     }
   }
   makeReadyMarker(scene, g);
+  makeHelpedMarker(scene, g);
+  makeBuildMarker(scene, g);
+  makeFertilizedBadge(scene, g);
   g.destroy();
 }
 
@@ -339,6 +348,66 @@ function makeReadyMarker(scene: Phaser.Scene, g: Phaser.GameObjects.Graphics): v
   g.fillStyle(0xffe082, 1);
   g.fillCircle(11 * s, 9 * s, 3 * s);
   save(scene, g, READY_MARKER_KEY, 24, 26);
+}
+
+function bubble(g: Phaser.GameObjects.Graphics): void {
+  const s = TEX_SCALE;
+  g.fillStyle(0xffffff, 1);
+  g.lineStyle(1.5 * s, 0x5d4037, 1);
+  g.fillRoundedRect(1 * s, 1 * s, 22 * s, 18 * s, 6 * s);
+  g.strokeRoundedRect(1 * s, 1 * s, 22 * s, 18 * s, 6 * s);
+  g.fillTriangle(8 * s, 18 * s, 16 * s, 18 * s, 12 * s, 24 * s);
+}
+
+function makeHelpedMarker(scene: Phaser.Scene, g: Phaser.GameObjects.Graphics): void {
+  const s = TEX_SCALE;
+  bubble(g);
+  g.lineStyle(3 * s, 0x43a047, 1);
+  g.beginPath();
+  g.moveTo(6 * s, 10 * s);
+  g.lineTo(10.5 * s, 14 * s);
+  g.lineTo(18 * s, 5.5 * s);
+  g.strokePath();
+  save(scene, g, HELPED_MARKER_KEY, 24, 26);
+}
+
+function makeBuildMarker(scene: Phaser.Scene, g: Phaser.GameObjects.Graphics): void {
+  const s = TEX_SCALE;
+  bubble(g);
+  // A hammer: wooden handle and a grey head.
+  g.lineStyle(3 * s, 0xa1704a, 1);
+  g.lineBetween(8 * s, 15 * s, 15 * s, 7 * s);
+  g.fillStyle(0x78909c, 1);
+  g.fillRect(12 * s, 3.5 * s, 8 * s, 4.5 * s);
+  save(scene, g, BUILD_MARKER_KEY, 24, 26);
+}
+
+/** A gold four-point sparkle with a dark rim, readable on soil and leaves alike. */
+function makeFertilizedBadge(scene: Phaser.Scene, g: Phaser.GameObjects.Graphics): void {
+  const s = TEX_SCALE;
+  const star = (cx: number, cy: number, r: number) => {
+    const w = r * 0.32;
+    g.beginPath();
+    g.moveTo(cx * s, (cy - r) * s);
+    g.lineTo((cx + w) * s, (cy - w) * s);
+    g.lineTo((cx + r) * s, cy * s);
+    g.lineTo((cx + w) * s, (cy + w) * s);
+    g.lineTo(cx * s, (cy + r) * s);
+    g.lineTo((cx - w) * s, (cy + w) * s);
+    g.lineTo((cx - r) * s, cy * s);
+    g.lineTo((cx - w) * s, (cy - w) * s);
+    g.closePath();
+  };
+  for (const [x, y, r] of [[8, 9, 7], [15, 4, 3.5]] as const) {
+    g.lineStyle(1.6 * s, 0x5d4037, 0.9);
+    g.fillStyle(0xffd54f, 1);
+    star(x, y, r);
+    g.fillPath();
+    g.strokePath();
+  }
+  g.fillStyle(0xffffff, 1);
+  g.fillCircle(8 * s, 9 * s, 1.2 * s);
+  save(scene, g, FERTILIZED_BADGE_KEY, 20, 18);
 }
 
 function shadeColor(c: number, f: number): number {

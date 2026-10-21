@@ -11,6 +11,10 @@ export const STOPS = {
   startingCash: [0, 5, 10, 25, 50, 100, 1000],
   fuelRegenPerHour: [0, 0.25, 0.5, 1, 2, 5, 10],
   masteryGoal: [0.1, 0.25, 0.5, 0.75, 1, 1.5, 2, 3],
+  aiNeighborCount: [0, 1, 2, 3, 4, 5, 6, 8, 10, 15, 20],
+  aiGiftsPerDay: [0, 0.5, 1, 2, 3, 5, 8, 10, 20],
+  neighborHelpsPerDay: [0, 1, 2, 3, 5, 8, 10, 20],
+  contractTime: [0.25, 0.5, 0.75, 1, 1.5, 2, 3, 5],
 } as const satisfies Record<string, readonly number[]>;
 
 /** Index of the stop closest to `value` (values from imported rules may fall between stops). */

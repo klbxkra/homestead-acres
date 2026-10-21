@@ -2,9 +2,10 @@
  * Every price, yield, timer and XP value goes through here (PLAN.md section 5):
  * value = (per-item override ?? base) x global multiplier. Nothing else reads raw content numbers.
  */
-import type { AnimalDef, Content, CropDef, ExpansionDef, PlaceableInfo, TreeDef, VehicleDef } from '../content';
+import type { AnimalDef, Content, ContractDef, CropDef, ExpansionDef, PlaceableInfo, SupplyDef, TreeDef, VehicleDef } from '../content';
 import { lookup } from './ids';
 import type { ItemOverride, WorldRules } from './rules';
+import { HOUR_MS } from './time';
 
 function override(rules: WorldRules, itemId: string): ItemOverride | undefined {
   return lookup(rules.overrides, itemId);
@@ -89,4 +90,30 @@ export function vehicleCost(vehicle: VehicleDef, rules: WorldRules): number {
 
 export function expansionCost(expansion: ExpansionDef, rules: WorldRules): number {
   return coins(expansion.cost * rules.buyCost);
+}
+
+// ---------------------------------------------------------------- Phase 6: supplies, neighbours, co-op jobs
+
+/** Price of one supply or part: coins scale with buyCost; Farm Cash prices are fixed (like refuelling). */
+export function supplyPrice(supply: SupplyDef, rules: WorldRules): { coins: number; cash: number } {
+  return { coins: coins((override(rules, supply.id)?.cost ?? supply.coins ?? 0) * rules.buyCost), cash: supply.cash ?? 0 };
+}
+
+/** Coins for harvesting a crop; fertilized crops pay a bonus on top. */
+export function cropHarvestValue(crop: CropDef, rules: WorldRules, fertilized: boolean, content: Content): number {
+  const value = cropHarvestCoins(crop, rules);
+  return fertilized ? coins(value * (1 + content.base.fertilizeBonus)) : value;
+}
+
+export function neighborHelpCoins(content: Content, rules: WorldRules): number {
+  return coins(content.base.neighbors.helpCoins * rules.coinYield);
+}
+
+export function neighborHelpXp(content: Content, rules: WorldRules): number {
+  return content.base.neighbors.helpXp * rules.xpGain;
+}
+
+/** Game-time length of a co-op job. */
+export function contractDurationMs(contract: ContractDef, rules: WorldRules): number {
+  return Math.max(1, Math.round(contract.durationHours * HOUR_MS * rules.contractTime));
 }

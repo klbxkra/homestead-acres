@@ -4,7 +4,7 @@
  */
 import type { PlaceableInfo } from '../content';
 import type { InventorySource } from './commands';
-import { bump, reject, spend } from './context';
+import { bump, reject, spend, takeFrom } from './context';
 import type { Ctx, Tile } from './context';
 import { animalCycleMs, itemCost, itemRefund, itemXp, treeCycleMs } from './economy';
 import { entityAt, itemSize, placementProblem } from './grid';
@@ -24,23 +24,37 @@ function checkFits(ctx: Ctx, itemId: string, at: Tile, rotated: boolean, ignoreI
   if (problem) reject(problem, problem === 'occupied' ? 'Something is in the way.' : 'That does not fit on the farm.');
 }
 
-/** A building at the tile that can house this animal (or null if there's no housing building there). */
-function housingAt(ctx: Ctx, at: Tile, animalId: string): BuildingEntity | null {
+/** A finished building at the tile that can house this animal or tree (or null if there's none there). */
+function housingAt(ctx: Ctx, at: Tile, itemId: string): BuildingEntity | null {
   const target = entityAt(ctx.farm, at.x, at.y, ctx.content);
-  if (target?.kind !== 'building') return null;
+  if (target?.kind !== 'building' || !isBuilt(target)) return null;
   const def = lookup(ctx.content.buildings, target.itemId);
-  if (!def || !def.houses.includes(animalId)) return null;
+  if (!def || !def.houses.includes(itemId)) return null;
   if (target.housed.length >= def.capacity) reject('building_full', `The ${def.name} is full.`);
   return target;
 }
 
-function newEntity(ctx: Ctx, item: PlaceableInfo, at: Tile, rotated: boolean): ItemEntity {
+/** False while a construction building is still a frame waiting for parts. */
+export function isBuilt(building: BuildingEntity): boolean {
+  return building.parts === undefined;
+}
+
+/** Production cycle of a tree or animal living in a building. */
+function cycleMsOf(ctx: Ctx, itemId: string): number {
+  const tree = lookup(ctx.content.trees, itemId);
+  if (tree) return treeCycleMs(tree, ctx.rules);
+  return animalCycleMs(ctx.content.animals[itemId]!, ctx.rules);
+}
+
+function newEntity(ctx: Ctx, item: PlaceableInfo, at: Tile, rotated: boolean, asFrame: boolean): ItemEntity {
   const base = { id: allocateId(ctx.state, item.kind === 'decoration' ? 'deco' : item.kind), ownerId: ctx.player.id, x: at.x, y: at.y };
   switch (item.kind) {
     case 'decoration':
       return { ...base, kind: 'decoration', itemId: item.id, rotated };
-    case 'building':
-      return { ...base, kind: 'building', itemId: item.id, rotated, housed: [] };
+    case 'building': {
+      const frame = asFrame && lookup(ctx.content.buildings, item.id)?.construction !== undefined;
+      return { ...base, kind: 'building', itemId: item.id, rotated, housed: [], ...(frame ? { parts: {} } : {}) };
+    }
     case 'tree':
       return { ...base, kind: 'tree', itemId: item.id, readyAt: ctx.now + treeCycleMs(ctx.content.trees[item.id]!, ctx.rules) };
     case 'animal':
@@ -49,22 +63,23 @@ function newEntity(ctx: Ctx, item: PlaceableInfo, at: Tile, rotated: boolean): I
 }
 
 /**
- * Puts a new item on the farm at `at`. Animals dropped on a matching building
- * move in instead of standing on the grass.
+ * Puts a new item on the farm at `at`. Animals and trees dropped on a matching
+ * building move in instead of standing on the grass. Construction buildings
+ * bought from the market (`asFrame`) start as a frame that needs parts.
  */
-function putOnFarm(ctx: Ctx, item: PlaceableInfo, at: Tile, rotated: boolean, cost: number): void {
-  if (item.kind === 'animal') {
+function putOnFarm(ctx: Ctx, item: PlaceableInfo, at: Tile, rotated: boolean, cost: number, asFrame = false): void {
+  if (item.kind === 'animal' || item.kind === 'tree') {
     const home = housingAt(ctx, at, item.id);
     if (home) {
       spend(ctx, cost);
-      home.housed.push({ itemId: item.id, readyAt: ctx.now + animalCycleMs(ctx.content.animals[item.id]!, ctx.rules) });
+      home.housed.push({ itemId: item.id, readyAt: ctx.now + cycleMsOf(ctx, item.id) });
       ctx.events.push({ type: 'animalHoused', buildingId: home.id, itemId: item.id, x: home.x, y: home.y });
       return;
     }
   }
   checkFits(ctx, item.id, at, rotated);
   spend(ctx, cost);
-  const entity = newEntity(ctx, item, at, rotated);
+  const entity = newEntity(ctx, item, at, rotated, asFrame);
   ctx.farm.entities[entity.id] = entity;
   ctx.events.push({ type: 'placed', entityId: entity.id, itemId: item.id, cost, x: at.x, y: at.y });
 }
@@ -73,7 +88,7 @@ export function buy(ctx: Ctx, itemId: string, at: Tile, rotated: boolean): void 
   const item = placeable(ctx, itemId);
   if (!item.buyable) reject('unknown_item', `${item.name} can't be bought.`);
   if (ctx.player.level < item.unlockLevel) reject('locked', `${item.name} unlocks at level ${item.unlockLevel}.`);
-  putOnFarm(ctx, item, at, rotated, itemCost(item, ctx.rules));
+  putOnFarm(ctx, item, at, rotated, itemCost(item, ctx.rules), true);
   gainXp(ctx.player, itemXp(item, ctx.rules), ctx.content.levels, ctx.rules, ctx.events);
   addCounter(ctx, 'itemsBought');
 }
@@ -83,7 +98,7 @@ export function placeFromInventory(ctx: Ctx, itemId: string, from: InventorySour
   const inventory = inventoryOf(ctx.player, from);
   if ((lookup(inventory, itemId) ?? 0) < 1) reject('not_in_inventory', `No ${item.name} in your ${from === 'giftBox' ? 'gift box' : 'storage'}.`);
   putOnFarm(ctx, item, at, rotated, 0);
-  takeOne(inventory, itemId);
+  takeFrom(inventory, itemId);
 }
 
 /** Puts a farm item away into storage. Buildings must be empty first. */
@@ -91,6 +106,7 @@ export function store(ctx: Ctx, entityId: string): void {
   const entity = lookup(ctx.farm.entities, entityId) ?? reject('unknown_entity', 'That item is not on this farm.');
   if (entity.kind === 'plot') reject('invalid', 'Plots can\'t be stored. Use the sell tool to remove them.');
   if (entity.kind === 'building' && entity.housed.length) reject('not_empty', 'Animals live here. Move them out first.');
+  if (entity.kind === 'building' && !isBuilt(entity)) reject('not_empty', 'Finish building it before putting it away.');
   const freeAfter = storageCapacity(ctx.farm, ctx.content, entityId) - storedCount(ctx.player);
   if (freeAfter < 1) reject('storage_full', 'Storage is full. Build a Storage Cellar or Barn for more room.');
   delete ctx.farm.entities[entityId];
@@ -120,16 +136,16 @@ export function sellFromInventory(ctx: Ctx, itemId: string, from: InventorySourc
   if ((lookup(inventory, itemId) ?? 0) < 1) reject('not_in_inventory', 'You don\'t have that item.');
   const item = lookup(ctx.content.placeables, itemId);
   const refund = item ? itemRefund(item, ctx.content, ctx.rules) : 0;
-  takeOne(inventory, itemId);
+  takeFrom(inventory, itemId);
   ctx.player.coins += refund;
   ctx.events.push({ type: 'itemSold', itemId, refund });
 }
 
-/** Moves (and optionally rotates) an entity. Dropping an animal on a matching building houses it. */
+/** Moves (and optionally rotates) an entity. Dropping an animal or tree on a matching building houses it. */
 export function move(ctx: Ctx, entityId: string, at: Tile, rotated: boolean | undefined): void {
   const entity = lookup(ctx.farm.entities, entityId) ?? reject('unknown_entity', 'That item is not on this farm.');
 
-  if (entity.kind === 'animal') {
+  if (entity.kind === 'animal' || entity.kind === 'tree') {
     const home = housingAt(ctx, at, entity.itemId);
     if (home) {
       delete ctx.farm.entities[entityId];
@@ -159,12 +175,6 @@ export function inventoryOf(player: PlayerState, from: InventorySource): Record<
   return from === 'giftBox' ? player.giftBox : player.storage;
 }
 
-function takeOne(inventory: Record<string, number>, itemId: string): void {
-  const left = (inventory[itemId] ?? 0) - 1;
-  if (left > 0) inventory[itemId] = left;
-  else delete inventory[itemId];
-}
-
 export function storedCount(player: PlayerState): number {
   return Object.values(player.storage).reduce((a, b) => a + b, 0);
 }
@@ -173,7 +183,7 @@ export function storedCount(player: PlayerState): number {
 export function storageCapacity(farm: FarmState, content: Content, ignoreEntityId?: string): number {
   let capacity = content.base.storageCapacity;
   for (const e of Object.values(farm.entities)) {
-    if (e.kind !== 'building' || e.id === ignoreEntityId) continue;
+    if (e.kind !== 'building' || e.id === ignoreEntityId || !isBuilt(e)) continue;
     capacity += lookup(content.buildings, e.itemId)?.storage ?? 0;
   }
   return capacity;

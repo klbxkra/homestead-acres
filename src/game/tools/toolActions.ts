@@ -3,7 +3,7 @@
  * turns the outcome into a command, a menu, or a pick-up.
  */
 import type { Content } from '../../content';
-import { cropStatus, entityAt, isProducing, itemRefund, lookup } from '../../core';
+import { cropStatus, entityAt, helpKindFor, isProducing, itemRefund, lookup } from '../../core';
 import type { Command, Entity, FarmState, WorldRules } from '../../core';
 import type { MarketTab, PlaceSource, ToolId } from '../../app/uiState';
 
@@ -15,6 +15,7 @@ export interface ToolContext {
   placeFrom: PlaceSource;
   movingEntityId: string | null;
   vehicleId: string | null;
+  supplyId: string | null;
   rotated: boolean;
 }
 
@@ -22,6 +23,8 @@ export type ToolOutcome =
   | { kind: 'command'; command: Command; confirm?: string }
   | { kind: 'openMarket'; tab: MarketTab }
   | { kind: 'pick'; entityId: string }
+  /** Open the parts dialog of an unfinished construction building. */
+  | { kind: 'construction'; entityId: string }
   | { kind: 'inspect' }
   | { kind: 'none'; reason?: string };
 
@@ -62,6 +65,9 @@ export function resolveTap(
         kind: 'command',
         command: { type: 'useVehicle', vehicleId: ctx.vehicleId, x, y, ...(ctx.seedId ? { cropId: ctx.seedId } : {}) },
       };
+    case 'supply':
+      if (!ctx.supplyId) return { kind: 'openMarket', tab: 'supplies' };
+      return { kind: 'command', command: { type: 'useSupply', itemId: ctx.supplyId, x, y } };
     case 'move':
       if (ctx.movingEntityId) {
         return { kind: 'command', command: { type: 'move', entityId: ctx.movingEntityId, x, y, rotated: ctx.rotated } };
@@ -84,6 +90,7 @@ function multiOutcome(
   rules: WorldRules,
 ): ToolOutcome {
   if (!entity) return { kind: 'command', command: { type: 'plow', x, y } };
+  if (entity.kind === 'building' && entity.parts) return { kind: 'construction', entityId: entity.id };
   if (entity.kind !== 'plot') {
     return isProducing(entity, gameNow) ? { kind: 'command', command: { type: 'harvest', x, y } } : { kind: 'inspect' };
   }
@@ -115,6 +122,27 @@ function sellOutcome(entity: Entity, gameNow: number, rules: WorldRules, content
     return { kind: 'command', command, confirm: `Remove this plot and its ${name}?` };
   }
   return { kind: 'command', command };
+}
+
+/**
+ * A tap while visiting a neighbour: help with whatever is there (once per thing
+ * per day), otherwise just show what it is.
+ */
+export function resolveVisitTap(
+  neighborId: string,
+  farm: FarmState,
+  tile: TileTarget,
+  helped: ReadonlySet<string>,
+  gameNow: number,
+  rules: WorldRules,
+  content: Content,
+): ToolOutcome {
+  const { x, y } = tile;
+  if (x < 0 || y < 0 || x >= farm.width || y >= farm.height) return { kind: 'none' };
+  const entity = entityAt(farm, x, y, content);
+  if (!entity) return { kind: 'none' };
+  if (helped.has(entity.id) || !helpKindFor(entity, gameNow, rules)) return { kind: 'inspect' };
+  return { kind: 'command', command: { type: 'helpNeighbor', neighborId, x, y } };
 }
 
 /** Painting applies a tool across many plots; only plain commands without confirmation are allowed. */

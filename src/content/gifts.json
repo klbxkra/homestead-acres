@@ -1,0 +1,19 @@
+[
+  { "itemId": "fertilizer", "weight": 10 },
+  { "itemId": "unwither_tonic", "weight": 2, "unlockLevel": 4 },
+  { "itemId": "instagrow", "weight": 1, "unlockLevel": 6 },
+  { "itemId": "fuel_can", "weight": 4, "unlockLevel": 10 },
+  { "itemId": "nail", "weight": 5 },
+  { "itemId": "wooden_board", "weight": 5 },
+  { "itemId": "brick", "weight": 4 },
+  { "itemId": "shingle", "weight": 4 },
+  { "itemId": "hay_bale", "weight": 4 },
+  { "itemId": "white_fence", "weight": 3, "count": 4 },
+  { "itemId": "flower_bed", "weight": 3, "unlockLevel": 2 },
+  { "itemId": "tulip_bed", "weight": 3, "unlockLevel": 5 },
+  { "itemId": "rose_bush", "weight": 2, "unlockLevel": 8 },
+  { "itemId": "chicken", "weight": 2, "unlockLevel": 3 },
+  { "itemId": "apple_tree", "weight": 2, "unlockLevel": 4 },
+  { "itemId": "pear_tree", "weight": 1, "unlockLevel": 6 },
+  { "itemId": "cow", "weight": 1, "unlockLevel": 6 }
+]

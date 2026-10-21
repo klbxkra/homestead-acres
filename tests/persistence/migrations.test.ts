@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { rulesForPreset } from '../../src/core';
+import { defaultContent } from '../../src/content';
+import { DAY_MS, newGame, rulesForPreset, tick } from '../../src/core';
 import { checksumOf, decodeSave, migrate, MIGRATIONS } from '../../src/persistence';
 import type { Migration } from '../../src/persistence';
 
@@ -74,6 +75,33 @@ describe('migrate', () => {
     expect(decoded.state.rules.masteryGoal).toBe(1);
     expect(decoded.state.rules.preset).toBe('relaxed');
     expect(decoded.state.farms['farm2']!.entities['plot3']).toMatchObject({ kind: 'plot', crop: { cropId: 'wheat' } });
+  });
+
+  it('upgrades a v2 save (Phase 5) and its neighbours arrive on the next tick, without a gift backlog', () => {
+    // A Phase 5 save: today's state minus everything Phase 6 added.
+    const fresh = newGame({ farmName: 'Phase Five', playerName: 'Pat', realNow: 50 * DAY_MS + 1000, rules: rulesForPreset('classic') }, defaultContent);
+    const v2 = structuredClone(fresh) as unknown as { schemaVersion: number; rules: Record<string, unknown>; players: Record<string, Record<string, unknown>> };
+    v2.schemaVersion = 2;
+    delete v2.rules['neighborHelpsPerDay'];
+    delete v2.rules['contractTime'];
+    for (const p of Object.values(v2.players)) {
+      delete p['social'];
+      delete p['contract'];
+      delete p['contractMedals'];
+    }
+    const file = { format: 'homestead-acres-save', schemaVersion: 2, gameVersion: '0.1.0', savedAt: 0, checksum: checksumOf(v2), state: v2 };
+    const decoded = decodeSave(JSON.parse(JSON.stringify(file)));
+    expect(decoded.ok, decoded.ok ? '' : decoded.error).toBe(true);
+    if (!decoded.ok) return;
+    expect(decoded.migratedFrom).toBe(2);
+    expect(decoded.state.rules).toMatchObject({ neighborHelpsPerDay: 5, contractTime: 1 });
+    const p = decoded.state.players[decoded.state.localPlayerId]!;
+    expect(p).toMatchObject({ contract: null, contractMedals: {}, social: { processedDay: 50, neighbors: [], mailbox: [] } });
+
+    const later = tick(decoded.state, decoded.state.clock.realNow + 1000, defaultContent);
+    const social = later.players[later.localPlayerId]!.social;
+    expect(social.neighbors).toHaveLength(5);
+    expect(social.mailbox).toHaveLength(2); // welcome gifts only
   });
 
   it('has a step for every version below the current one', async () => {

@@ -2,8 +2,9 @@
 import { allocateId, lookup } from './ids';
 import { inBounds, reject, spend } from './context';
 import type { Ctx, Tile } from './context';
+import { recordContractHarvest } from './contracts';
 import { cropStatus } from './crops';
-import { cropGrowMs, cropHarvestCoins, cropPlantXp, cropSeedCost, plowCost, plowXp } from './economy';
+import { cropGrowMs, cropHarvestValue, cropPlantXp, cropSeedCost, plowCost, plowXp } from './economy';
 import { entityAt } from './grid';
 import { gainXp } from './progression';
 import { addCounter, isMastered, recordCropHarvest, rollCollectibles } from './rewards';
@@ -72,11 +73,12 @@ export function harvestCrop(ctx: Ctx, plot: PlotEntity, at: Tile): void {
 
   const { cropId } = plot.crop;
   const crop = lookup(content.crops, cropId);
-  const coins = crop ? cropHarvestCoins(crop, rules) : 0; // a crop removed from content still clears
+  const coins = crop ? cropHarvestValue(crop, rules, plot.crop.fertilized === true, content) : 0; // a crop removed from content still clears
   player.coins += coins;
   plot.crop = null;
   plot.plowed = rules.keepPlowedAfterHarvest;
   ctx.events.push({ type: 'harvested', x: at.x, y: at.y, entityId: plot.id, cropId, coins });
   recordCropHarvest(ctx, cropId, coins);
+  recordContractHarvest(ctx, cropId);
   rollCollectibles(ctx, { crop: cropId }, at);
 }

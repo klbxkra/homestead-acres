@@ -4,9 +4,10 @@ import type { EntityId, FarmId, PlayerId } from './ids';
 import { rulesForPreset, DEFAULT_PRESET } from './rules';
 import type { WorldRules } from './rules';
 import { seedFromString } from './rng';
+import { DAY_MS } from './time';
 
 /** Bump with a step in persistence/migrations.ts whenever GameState changes shape. */
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 export interface Clock {
   /** Game-time ms. Starts equal to real time; runs faster with timeScale. All timers use this. */
@@ -20,6 +21,8 @@ export interface CropInstance {
   plantedAt: number;
   /** Game time the crop becomes ripe. Fixed at planting, so rule changes only affect new plantings. */
   readyAt: number;
+  /** Fertilized (by a neighbour or the Fertilizer supply): sells for more at harvest. */
+  fertilized?: boolean;
 }
 
 interface EntityBase {
@@ -66,8 +69,13 @@ export interface BuildingEntity extends EntityBase {
   kind: 'building';
   itemId: string;
   rotated: boolean;
-  /** Animals living inside (coops, dairies, pens). Collected all at once. */
+  /** Animals or trees living inside (coops, dairies, pens, orchards). Collected all at once. */
   housed: HousedAnimal[];
+  /**
+   * Construction buildings only: parts added so far (part id -> count). Present
+   * while the building is an unfinished frame; removed when it's complete.
+   */
+  parts?: Record<string, number>;
 }
 
 export type Entity = PlotEntity | DecorationEntity | TreeEntity | AnimalEntity | BuildingEntity;
@@ -102,6 +110,70 @@ export interface DailyBonusState {
   streak: number;
 }
 
+/** A generated farmer next door (PLAN.md section 4.8). */
+export interface NeighborState {
+  id: string;
+  name: string;
+  /** Emoji shown as their picture. */
+  avatar: string;
+  color: string;
+  /** Their level is yours plus this, so they keep pace with you. */
+  levelOffset: number;
+  /** Fixed seed their farm is generated from. */
+  seed: number;
+  /** Game day of `helped` (helps reset each day). */
+  helpDay: number;
+  /** Entity ids on their farm you've helped with on `helpDay`. */
+  helped: string[];
+  /** All-time helps given, shown as friendship. */
+  helpsGiven: number;
+}
+
+/** A gift from a neighbour, waiting to be accepted into the gift box. */
+export interface MailItem {
+  id: string;
+  neighborId: string;
+  itemId: string;
+  count: number;
+  /** Game time it arrived. */
+  sentAt: number;
+}
+
+/** Something a neighbour did on your farm. */
+export interface NeighborLogEntry {
+  at: number;
+  neighborId: string;
+  kind: 'fertilized' | 'fed';
+  count: number;
+}
+
+export interface SocialState {
+  /** Fixed seed for generating neighbours. */
+  seed: number;
+  /** Last game day (floor(gameNow / DAY_MS)) whose neighbour activity has run. */
+  processedDay: number;
+  /** The first `rules.aiNeighborCount` are active; extras are kept in case the count goes back up. */
+  neighbors: NeighborState[];
+  mailbox: MailItem[];
+  /** Recent neighbour visits, newest last. */
+  log: NeighborLogEntry[];
+}
+
+export type Medal = 'gold' | 'silver' | 'bronze';
+
+/** A co-op job in progress (PLAN.md section 4.8). */
+export interface ActiveContract {
+  contractId: string;
+  startedAt: number;
+  endsAt: number;
+  /** AI neighbours helping. Real co-op will list other players here too. */
+  partners: string[];
+  /** Participant id (you or a partner) -> crop id -> harvested for this job. */
+  progress: Record<string, Record<string, number>>;
+  /** Game time every goal was met, or null. */
+  completedAt: number | null;
+}
+
 export interface PlayerState {
   id: PlayerId;
   name: string;
@@ -125,6 +197,10 @@ export interface PlayerState {
   /** Owned vehicle ids. */
   vehicles: string[];
   daily: DailyBonusState;
+  social: SocialState;
+  contract: ActiveContract | null;
+  /** Contract id -> best medal earned. */
+  contractMedals: Record<string, Medal>;
 }
 
 export interface GameState {
@@ -179,6 +255,15 @@ export function newGame(options: NewGameOptions, content: Content): GameState {
         fuel: { amount: content.base.fuelMax, updatedAt: options.realNow },
         vehicles: [],
         daily: { lastClaimRealAt: null, streak: 0 },
+        social: {
+          seed: seedFromString(`${options.farmName}:${options.realNow}:neighbors`),
+          processedDay: Math.floor(options.realNow / DAY_MS),
+          neighbors: [],
+          mailbox: [],
+          log: [],
+        },
+        contract: null,
+        contractMedals: {},
       },
     },
     farms: {

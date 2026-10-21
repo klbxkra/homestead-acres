@@ -1,8 +1,11 @@
 [
-  { "id": "chicken_coop", "name": "Chicken Coop", "cost": 2500, "xp": 50, "width": 2, "height": 2, "unlockLevel": 8, "houses": ["chicken", "duck"], "capacity": 20 },
+  { "id": "chicken_coop", "name": "Chicken Coop", "cost": 2500, "xp": 50, "width": 2, "height": 2, "unlockLevel": 8, "houses": ["chicken", "duck", "turkey"], "capacity": 20 },
   { "id": "storage_cellar", "name": "Storage Cellar", "cost": 3000, "xp": 50, "width": 2, "height": 2, "unlockLevel": 10, "storage": 40 },
+  { "id": "orchard", "name": "Orchard", "cost": 8000, "xp": 200, "width": 3, "height": 3, "unlockLevel": 12, "houses": ["apple_tree", "lemon_tree", "pear_tree", "cherry_tree", "orange_tree", "peach_tree", "plum_tree", "pomegranate_tree", "banana_tree", "olive_tree", "maple_tree", "avocado_tree", "fig_tree", "coconut_palm"], "capacity": 20, "construction": { "wooden_board": 10, "nail": 10, "brick": 5 } },
+  { "id": "garage", "name": "Garage", "cost": 6000, "xp": 150, "width": 2, "height": 2, "unlockLevel": 12, "fuelBonus": 10, "construction": { "wooden_board": 6, "nail": 6, "shingle": 6 } },
   { "id": "dairy_farm", "name": "Dairy Farm", "cost": 6000, "xp": 100, "width": 3, "height": 2, "unlockLevel": 14, "houses": ["cow", "goat"], "capacity": 20 },
-  { "id": "sheep_pen", "name": "Sheep Pen", "cost": 5000, "xp": 80, "width": 2, "height": 2, "unlockLevel": 16, "houses": ["sheep", "pig", "rabbit"], "capacity": 15 },
+  { "id": "duck_pond", "name": "Duck Pond", "cost": 4000, "xp": 100, "width": 2, "height": 2, "unlockLevel": 15, "houses": ["duck", "goose"], "capacity": 15, "construction": { "brick": 8, "wooden_board": 4 } },
+  { "id": "sheep_pen", "name": "Sheep Pen", "cost": 5000, "xp": 80, "width": 2, "height": 2, "unlockLevel": 16, "houses": ["sheep", "pig", "rabbit", "llama"], "capacity": 15 },
   { "id": "barn", "name": "Barn", "cost": 12000, "xp": 150, "width": 3, "height": 3, "unlockLevel": 20, "storage": 100 },
-  { "id": "stable", "name": "Stable", "cost": 9000, "xp": 120, "width": 3, "height": 2, "unlockLevel": 26, "houses": ["horse"], "capacity": 10 }
+  { "id": "stable", "name": "Stable", "cost": 9000, "xp": 120, "width": 3, "height": 2, "unlockLevel": 26, "houses": ["horse", "donkey"], "capacity": 10 }
 ]

@@ -13,6 +13,10 @@ export interface AwaySummary {
   /** Crop name -> how many became ripe. */
   ripenedByCrop: Record<string, number>;
   timersPaused: boolean;
+  /** Gifts neighbours sent while you were away. */
+  newGifts: number;
+  /** Neighbour visits while you were away, e.g. "Ada fertilized 4 crops". */
+  visits: string[];
 }
 
 /** What changed on the farm between the saved state and the caught-up state. */
@@ -39,6 +43,14 @@ export function summarizeAway(before: GameState, after: GameState, realNow: numb
     }
   }
 
+  const playerBefore = before.players[before.localPlayerId]!;
+  const playerAfter = after.players[after.localPlayerId]!;
+  const oldMail = new Set(playerBefore.social.mailbox.map((m) => m.id));
+  const names = new Map(playerAfter.social.neighbors.map((n) => [n.id, n.name]));
+  const visits = playerAfter.social.log
+    .filter((e) => e.at > before.clock.gameNow)
+    .map((e) => `${names.get(e.neighborId) ?? 'A neighbour'} ${e.kind === 'fertilized' ? `fertilized ${e.count} ${e.count === 1 ? 'crop' : 'crops'}` : `fed ${e.count} ${e.count === 1 ? 'animal' : 'animals'}`}`);
+
   return {
     farmName: farmAfter.name,
     awayMs: Math.max(0, realNow - before.clock.realNow),
@@ -47,10 +59,12 @@ export function summarizeAway(before: GameState, after: GameState, realNow: numb
     withered,
     ripenedByCrop,
     timersPaused: after.rules.offlineProgress === 'paused',
+    newGifts: playerAfter.social.mailbox.filter((m) => !oldMail.has(m.id)).length,
+    visits,
   };
 }
 
 /** Worth a "welcome back" popup? */
 export function isNoteworthy(s: AwaySummary): boolean {
-  return s.awayMs >= 60_000 && (s.ripened > 0 || s.withered > 0 || s.awayMs >= 10 * 60_000);
+  return s.awayMs >= 60_000 && (s.ripened > 0 || s.withered > 0 || s.newGifts > 0 || s.visits.length > 0 || s.awayMs >= 10 * 60_000);
 }

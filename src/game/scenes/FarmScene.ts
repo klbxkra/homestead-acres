@@ -2,10 +2,24 @@ import Phaser from 'phaser';
 import type { Session } from '../../app/session';
 import { cancelTool, PAINT_TOOLS, selectTool, startVehicle, toast } from '../../app/uiState';
 import type { UiState } from '../../app/uiState';
-import { entityAt, inventoryOf, itemSize, lookup, placementProblem } from '../../core';
-import type { Command, Entity, FarmState, GameEvent, GameState } from '../../core';
+import {
+  contractDef,
+  dayIndex,
+  entityAt,
+  helpedToday,
+  helpKindFor,
+  helpsLeft,
+  inventoryOf,
+  isBuilt,
+  itemSize,
+  lookup,
+  neighborHelpCoins,
+  placementProblem,
+  visitedFarm,
+} from '../../core';
+import type { Command, Entity, FarmState, GameEvent, GameState, NeighborState } from '../../core';
 import { renderPixelRatio, vibrate } from '../../platform/device';
-import { describeTile } from '../../ui/format';
+import { describeTile, withArticle } from '../../ui/format';
 import { decorationArt } from '../art/artData';
 import {
   animalKey,
@@ -19,12 +33,14 @@ import {
 } from '../art/textures';
 
 const RIBBON_TIERS = ['Yellow', 'White', 'Red', 'Blue'];
+const MEDAL_ICONS = { gold: '🥇', silver: '🥈', bronze: '🥉' } as const;
+const HELP_WORDS = { fertilized: 'Fertilized', unwithered: 'Revived', picked: 'Picked fruit', fed: 'Fed' } as const;
 import { floatText } from '../fx/floatText';
 import { bindPointer } from '../input/bindPointer';
 import type { DragMode, PressInfo, Pt } from '../input/gestures';
 import { KeyboardInput } from '../input/keyboard';
 import { farmBounds, pickTile, tileToWorld, TILE_HEIGHT, TILE_WIDTH } from '../iso';
-import { resolvePaint, resolveTap } from '../tools/toolActions';
+import { resolvePaint, resolveTap, resolveVisitTap } from '../tools/toolActions';
 import { createView, destroyView, DEPTH, setViewAlpha, updateView, viewMismatch } from '../views/entityViews';
 import type { EntityView } from '../views/entityViews';
 
@@ -42,6 +58,13 @@ const PAINT_REPORTED_ERRORS = new Set(['insufficient_coins', 'locked']);
 interface Tile {
   x: number;
   y: number;
+}
+
+/** The farm on screen: your own, or the neighbour you're visiting. */
+interface ViewedFarm {
+  farm: FarmState;
+  neighbor: NeighborState | null;
+  helped: ReadonlySet<string>;
 }
 
 export class FarmScene extends Phaser.Scene {
@@ -65,6 +88,10 @@ export class FarmScene extends Phaser.Scene {
   private lastPointerWasTouch = false;
   private keyboard!: KeyboardInput;
   private readonly cleanups: Array<() => void> = [];
+  /** Generated neighbour farm, reused until the neighbour, day, level or helps change. */
+  private visitCache: { key: string; view: ViewedFarm } | null = null;
+  /** Which farm the views were built for ('' = home). */
+  private shownFarm = '';
 
   constructor(session: Session) {
     super('Farm');
@@ -79,9 +106,25 @@ export class FarmScene extends Phaser.Scene {
     return this.session.ui;
   }
 
+  /** The farm on screen (home, or the neighbour being visited). */
   private get farm(): FarmState {
-    const s = this.transport.getState();
-    return s.farms[s.homeFarmId]!;
+    return this.viewed(this.transport.getState()).farm;
+  }
+
+  private viewed(state: GameState): ViewedFarm {
+    const home: ViewedFarm = { farm: state.farms[state.homeFarmId]!, neighbor: null, helped: new Set() };
+    const visiting = this.ui.get().visiting;
+    if (!visiting) return home;
+    const player = state.players[state.localPlayerId]!;
+    const neighbor = player.social.neighbors.slice(0, state.rules.aiNeighborCount).find((n) => n.id === visiting);
+    if (!neighbor) return home;
+    const now = state.clock.gameNow;
+    const key = `${neighbor.id}|${dayIndex(now)}|${player.level}|${neighbor.helpDay}|${neighbor.helped.join(',')}`;
+    if (this.visitCache?.key !== key) {
+      const farm = visitedFarm(neighbor, player, now, this.transport.content, state.rules);
+      this.visitCache = { key, view: { farm, neighbor, helped: helpedToday(neighbor, now) } };
+    }
+    return this.visitCache.view;
   }
 
   create(): void {
@@ -130,8 +173,9 @@ export class FarmScene extends Phaser.Scene {
     if (!enabled) this.onLeave();
   }
 
-  /** A different farm was loaded: drop every view and start from a fresh camera. */
+  /** A different farm was loaded (or we went visiting): drop every view and start from a fresh camera. */
   private onReset(): void {
+    this.visitCache = null;
     for (const view of this.views.values()) destroyView(view);
     this.views.clear();
     this.farmSize = { w: 0, h: 0 };
@@ -176,7 +220,11 @@ export class FarmScene extends Phaser.Scene {
   // ---------------------------------------------------------------- state -> views
 
   private syncState(state: GameState): void {
-    const farm = state.farms[state.homeFarmId]!;
+    const { farm, helped } = this.viewed(state);
+    if (farm.id !== this.shownFarm) {
+      this.shownFarm = farm.id;
+      if (this.views.size) return this.onReset();
+    }
     if (farm.width !== this.farmSize.w || farm.height !== this.farmSize.h) this.rebuildGround(farm);
 
     const { gameNow } = state.clock;
@@ -189,7 +237,7 @@ export class FarmScene extends Phaser.Scene {
         view = createView(this, entity);
         this.views.set(entity.id, view);
       }
-      updateView(this, view, entity, gameNow, state.rules, this.transport.content);
+      updateView(this, view, entity, gameNow, state.rules, this.transport.content, { helped: helped.has(entity.id) });
       setViewAlpha(view, entity.id === this.ui.get().movingEntityId ? 0.35 : 1);
     }
     for (const [id, view] of this.views) {
@@ -317,7 +365,8 @@ export class FarmScene extends Phaser.Scene {
     this.drawGhost();
     // Mouse users get info on hover for anything that's not bare grass.
     const onEntity = entityAt(this.farm, tile.x, tile.y, this.transport.content);
-    if (onEntity && !this.holdingSomething() && this.session.settings.get().hoverTooltips) this.showTooltip(tile, p, false);
+    const hoverInfo = this.session.settings.get().hoverTooltips || this.ui.get().visiting !== null;
+    if (onEntity && !this.holdingSomething() && hoverInfo) this.showTooltip(tile, p, false);
     else this.hideTooltip();
   }
 
@@ -333,6 +382,7 @@ export class FarmScene extends Phaser.Scene {
     this.lastPointerWasTouch = info.pointerType === 'touch';
     if (info.button === 1 || info.button === 2) return 'pan';
     const ui = this.ui.get();
+    if (ui.visiting) return 'pan';
     if (info.pointerType !== 'mouse' && this.holdingSomething()) return 'ghost';
     if ((ui.paint || info.shiftKey) && PAINT_TOOLS.includes(ui.tool)) return 'paint';
     return 'pan';
@@ -368,6 +418,7 @@ export class FarmScene extends Phaser.Scene {
   private onShortcut(key: string): void {
     if (!this.inputEnabled) return;
     const ui = this.ui;
+    if (ui.get().visiting && !['escape', 'n', '+', '=', '-', '_'].includes(key)) return; // no farm tools on someone else's farm
     const tools: Record<string, UiState['tool']> = { '1': 'multi', '2': 'plow', '3': 'seed', '4': 'harvest', '5': 'move', '6': 'sell', '7': 'store' };
     const tool = tools[key];
     if (tool) {
@@ -389,6 +440,8 @@ export class FarmScene extends Phaser.Scene {
         return ui.set((s) => ({ panel: s.panel === 'inventory' ? null : 'inventory' }));
       case 'b':
         return ui.set((s) => ({ panel: s.panel === 'book' ? null : 'book' }));
+      case 'n':
+        return ui.set((s) => ({ panel: s.panel === 'neighbors' ? null : 'neighbors' }));
       case 'm':
         return ui.set((s) => ({ marketOpen: !s.marketOpen }));
       case 'p':
@@ -406,6 +459,10 @@ export class FarmScene extends Phaser.Scene {
   }
 
   private onUiChange(s: UiState, prev: UiState): void {
+    if (s.visiting !== prev.visiting) {
+      this.syncState(this.transport.getState());
+      return;
+    }
     if (s.movingEntityId !== prev.movingEntityId) {
       for (const [id, view] of this.views) setViewAlpha(view, id === s.movingEntityId ? 0.35 : 1);
     }
@@ -414,6 +471,7 @@ export class FarmScene extends Phaser.Scene {
       s.movingEntityId !== prev.movingEntityId ||
       s.placeItemId !== prev.placeItemId ||
       s.vehicleId !== prev.vehicleId ||
+      s.supplyId !== prev.supplyId ||
       s.rotated !== prev.rotated
     ) {
       this.drawGhost();
@@ -425,9 +483,12 @@ export class FarmScene extends Phaser.Scene {
 
   private act(tile: Tile, p: Pt): void {
     const state = this.transport.getState();
-    const farm = state.farms[state.homeFarmId]!;
     const ui = this.ui.get();
-    const outcome = resolveTap(ui, farm, tile, state.clock.gameNow, state.rules, this.transport.content);
+    const viewed = this.viewed(state);
+    const farm = viewed.farm;
+    const outcome = viewed.neighbor
+      ? resolveVisitTap(viewed.neighbor.id, farm, tile, viewed.helped, state.clock.gameNow, state.rules, this.transport.content)
+      : resolveTap(ui, farm, tile, state.clock.gameNow, state.rules, this.transport.content);
 
     switch (outcome.kind) {
       case 'command': {
@@ -448,6 +509,9 @@ export class FarmScene extends Phaser.Scene {
         this.hideTooltip();
         return;
       }
+      case 'construction':
+        this.ui.set({ constructionId: outcome.entityId, tooltip: null });
+        return;
       case 'inspect':
         this.showTooltip(tile, p, true);
         return;
@@ -469,6 +533,10 @@ export class FarmScene extends Phaser.Scene {
       const player = this.transport.getState().players[this.transport.playerId]!;
       const left = lookup(inventoryOf(player, command.from), command.itemId) ?? 0;
       if (left === 0) selectTool(this.ui, 'multi');
+    }
+    if (command.type === 'useSupply') {
+      const player = this.transport.getState().players[this.transport.playerId]!;
+      if (!lookup(player.giftBox, command.itemId)) selectTool(this.ui, 'multi'); // used the last one
     }
     if (this.lastPointerWasTouch && this.session.settings.get().haptics) vibrate(command.type === 'harvest' ? 15 : 8);
     return true;
@@ -496,13 +564,25 @@ export class FarmScene extends Phaser.Scene {
     if (this.painted.has(key)) return;
     this.painted.add(key);
     const state = this.transport.getState();
+    if (this.ui.get().visiting) return;
     const command = resolvePaint(this.ui.get(), state.farms[state.homeFarmId]!, tile, state.clock.gameNow, state.rules, this.transport.content);
     if (command) this.send(command, tile, true);
   }
 
   private buildingItemId(entityId: string): string | undefined {
-    const e = lookup(this.farm.entities, entityId);
+    const s = this.transport.getState();
+    const e = lookup(s.farms[s.homeFarmId]!.entities, entityId);
     return e && e.kind !== 'plot' ? e.itemId : undefined;
+  }
+
+  private neighborName(id: string): string {
+    const s = this.transport.getState();
+    return s.players[s.localPlayerId]!.social.neighbors.find((n) => n.id === id)?.name ?? 'Your neighbor';
+  }
+
+  private itemName(itemId: string): string {
+    const c = this.transport.content;
+    return lookup(c.placeables, itemId)?.name ?? lookup(c.supplies, itemId)?.name ?? 'A gift';
   }
 
   private playEvents(events: readonly GameEvent[]): void {
@@ -523,9 +603,13 @@ export class FarmScene extends Phaser.Scene {
         case 'collected':
           if (e.coins > 0) this.float(at(e), `+${e.coins}`, 'coins');
           break;
-        case 'placed':
+        case 'placed': {
           if (e.cost > 0) this.float(at(e), `-${e.cost}`, 'cost');
+          const s = this.transport.getState();
+          const placed = lookup(s.farms[s.homeFarmId]!.entities, e.entityId);
+          if (placed?.kind === 'building' && placed.parts) toast(this.ui, `🏗️ ${this.itemName(e.itemId)} frame placed. Tap it to add building parts.`, 'info');
           break;
+        }
         case 'sold':
           if (e.refund > 0) this.float(at(this.lastActionTile), `+${e.refund}`, 'coins');
           break;
@@ -539,7 +623,7 @@ export class FarmScene extends Phaser.Scene {
           toast(this.ui, `Level ${e.level}!${e.cashReward ? ` +${e.cashReward} Farm Cash` : ''}`, 'success');
           break;
         case 'animalHoused': {
-          const name = lookup(content.animals, e.itemId)?.name ?? 'Animal';
+          const name = this.itemName(e.itemId);
           const home = lookup(content.buildings, this.buildingItemId(e.buildingId) ?? '')?.name ?? 'building';
           toast(this.ui, `${name} moved into the ${home}.`, 'success');
           break;
@@ -561,14 +645,64 @@ export class FarmScene extends Phaser.Scene {
           const set = content.collections.find((c) => c.id === e.collectionId);
           const item = set?.items.find((i) => i.id === e.collectibleId);
           this.float(at(e), `✨ ${item?.name ?? 'Collectible'}`, 'xp', 200);
-          toast(this.ui, `Found a ${item?.name ?? 'collectible'} for ${set?.name ?? 'a collection'}!`, 'info');
+          toast(this.ui, `Found ${withArticle(item?.name ?? 'collectible')} for ${set?.name ?? 'a collection'}!`, 'info');
           break;
         }
         case 'collectionCompleted':
           toast(this.ui, `Collection complete: ${content.collections.find((c) => c.id === e.collectionId)?.name}!`, 'success');
           break;
         case 'itemReceived':
-          toast(this.ui, `🎁 ${lookup(content.placeables, e.itemId)?.name ?? 'A gift'} added to your gift box.`, 'success');
+          if (e.reason === 'baby') toast(this.ui, `🍼 A baby ${this.itemName(e.itemId).toLowerCase()} was born! It's in your gift box.`, 'success');
+          else toast(this.ui, `🎁 ${this.itemName(e.itemId)} added to your gift box.`, 'success');
+          break;
+        case 'neighborHelped':
+          this.float(at(e), `+${e.coins}`, 'coins');
+          this.float(at(e), HELP_WORDS[e.help], 'xp', 80);
+          break;
+        case 'neighborThanks':
+          toast(this.ui, `💌 ${this.neighborName(e.neighborId)} says thanks!${e.itemId ? ` ${capitalize(withArticle(this.itemName(e.itemId)))} is in your mailbox.` : ''}`, 'success');
+          break;
+        case 'giftsAccepted': {
+          const total = e.items.reduce((n, i) => n + i.count, 0);
+          toast(this.ui, `🎁 ${total} ${total === 1 ? 'gift' : 'gifts'} moved to your gift box.`, 'success');
+          break;
+        }
+        case 'supplyBought':
+          // Parts bought from the construction dialog go straight into the building.
+          if (!this.ui.get().constructionId) toast(this.ui, `${e.count} × ${this.itemName(e.itemId)} added to your gift box.`, 'success');
+          break;
+        case 'supplyUsed': {
+          const kind = lookup(content.supplies, e.itemId)?.kind;
+          const text =
+            kind === 'fuel'
+              ? `+${e.affected} fuel.`
+              : kind === 'fertilizer'
+                ? `Fertilized ${e.affected} ${e.affected === 1 ? 'crop' : 'crops'}.`
+                : kind === 'instagrow'
+                  ? `${e.affected} ${e.affected === 1 ? 'crop is' : 'crops are'} ripe!`
+                  : `Revived ${e.affected} withered ${e.affected === 1 ? 'crop' : 'crops'}.`;
+          toast(this.ui, text, 'success');
+          break;
+        }
+        case 'partsAdded':
+          if (e.missing > 0) toast(this.ui, `Added ${e.added} ${e.added === 1 ? 'part' : 'parts'}. ${e.missing} still to go.`, 'info');
+          break;
+        case 'constructionCompleted':
+          toast(this.ui, `🏗️ ${this.itemName(e.itemId)} is finished!`, 'success');
+          break;
+        case 'contractStarted':
+          toast(this.ui, `📋 Co-op job started: ${contractDef(content, e.contractId)?.name ?? 'job'}.`, 'success');
+          break;
+        case 'contractCompleted':
+          toast(this.ui, `${MEDAL_ICONS[e.medal]} ${contractDef(content, e.contractId)?.name ?? 'Co-op job'} done! Claim your reward in 👥 Neighbors.`, 'success');
+          break;
+        case 'contractClaimed':
+          toast(this.ui, `${MEDAL_ICONS[e.medal]} ${e.medal[0]!.toUpperCase()}${e.medal.slice(1)} medal! +${e.coins.toLocaleString('en-US')} coins`, 'success');
+          break;
+        case 'contractFailed':
+          toast(this.ui, `The ${contractDef(content, e.contractId)?.name ?? 'co-op job'} ran out of time.`, 'info');
+          break;
+        case 'contractAbandoned':
           break;
         case 'vehicleBought':
           toast(this.ui, `${lookup(content.vehicles, e.vehicleId)?.name} bought! Tap plots to drive it.`, 'success');
@@ -633,8 +767,10 @@ export class FarmScene extends Phaser.Scene {
     if (!t) return;
 
     const content = this.transport.content;
-    if (ui.tool === 'vehicle' && ui.vehicleId) {
-      const area = lookup(content.vehicles, ui.vehicleId)?.area ?? 1;
+    if (ui.visiting) return;
+    const areaTool = (ui.tool === 'vehicle' && ui.vehicleId) || (ui.tool === 'supply' && ui.supplyId);
+    if (areaTool) {
+      const area = (ui.tool === 'vehicle' ? lookup(content.vehicles, ui.vehicleId ?? '')?.area : lookup(content.supplies, ui.supplyId ?? '')?.area) ?? 1;
       const center = tileToWorld(t.x + (area - 1) / 2, t.y + (area - 1) / 2);
       g.fillStyle(0xffe082, 0.35);
       g.lineStyle(2, 0xffca28, 1);
@@ -690,20 +826,39 @@ export class FarmScene extends Phaser.Scene {
     }
   }
 
-  /** Would dropping this animal here move it into a building with room? */
+  /** Would dropping this animal or tree here move it into a building with room? */
   private canHouseAt(itemId: string, t: Tile): boolean {
     const content = this.transport.content;
-    if (!lookup(content.animals, itemId)) return false;
+    if (!lookup(content.animals, itemId) && !lookup(content.trees, itemId)) return false;
     const target = entityAt(this.farm, t.x, t.y, content);
-    if (target?.kind !== 'building') return false;
+    if (target?.kind !== 'building' || !isBuilt(target)) return false;
     const def = lookup(content.buildings, target.itemId);
     return !!def && def.houses.includes(itemId) && target.housed.length < def.capacity;
   }
 
-  private showTooltip(tile: Tile, p: Pt, includeGrass: boolean): void {
+  /** Tooltip text; while visiting, says whether you can help there. */
+  private describe(tile: Tile) {
     const state = this.transport.getState();
-    const farm = state.farms[state.homeFarmId]!;
-    const desc = describeTile(farm, tile.x, tile.y, state.clock.gameNow, state.rules, this.transport.content);
+    const viewed = this.viewed(state);
+    const desc = describeTile(viewed.farm, tile.x, tile.y, state.clock.gameNow, state.rules, this.transport.content);
+    if (!desc || !viewed.neighbor) return desc;
+    const entity = entityAt(viewed.farm, tile.x, tile.y, this.transport.content);
+    if (!entity) return null;
+    // A neighbour's things aren't for sale and their timers aren't yours to plan around.
+    const lines = desc.lines.filter((l) => !l.startsWith('Sells') && l !== 'Reward item');
+    if (viewed.helped.has(entity.id)) lines.push('✅ You helped here today');
+    else if (helpKindFor(entity, state.clock.gameNow, state.rules)) {
+      lines.push(
+        helpsLeft(viewed.neighbor, state.clock.gameNow, state.rules) > 0
+          ? `Tap to help: +${neighborHelpCoins(this.transport.content, state.rules)} coins`
+          : `You've helped ${viewed.neighbor.name} enough today`,
+      );
+    }
+    return { title: desc.title, lines };
+  }
+
+  private showTooltip(tile: Tile, p: Pt, includeGrass: boolean): void {
+    const desc = this.describe(tile);
     if (!desc || (!includeGrass && desc.title === 'Grass')) return this.hideTooltip();
     this.tooltipTile = tile;
     this.ui.set({ tooltip: { x: p.x, y: p.y, ...desc } });
@@ -712,9 +867,7 @@ export class FarmScene extends Phaser.Scene {
   private refreshTooltip(): void {
     const tip = this.ui.get().tooltip;
     if (!tip || !this.tooltipTile) return;
-    const state = this.transport.getState();
-    const farm = state.farms[state.homeFarmId]!;
-    const desc = describeTile(farm, this.tooltipTile.x, this.tooltipTile.y, state.clock.gameNow, state.rules, this.transport.content);
+    const desc = this.describe(this.tooltipTile);
     if (!desc) return this.hideTooltip();
     if (desc.title !== tip.title || desc.lines.join('|') !== tip.lines.join('|')) this.ui.set({ tooltip: { ...tip, ...desc } });
   }
@@ -741,6 +894,10 @@ function diamondPath(g: Phaser.GameObjects.Graphics, cx: number, cy: number, w: 
   g.lineTo(bottom.x, bottom.y);
   g.lineTo(left.x, left.y);
   g.closePath();
+}
+
+function capitalize(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
 function formatXp(amount: number): string {

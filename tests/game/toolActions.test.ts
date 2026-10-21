@@ -11,6 +11,7 @@ const ctx = (patch: Partial<ToolContext> = {}): ToolContext => ({
   placeFrom: 'market',
   movingEntityId: null,
   vehicleId: null,
+  supplyId: null,
   rotated: false,
   ...patch,
 });

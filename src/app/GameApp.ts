@@ -163,7 +163,7 @@ export class GameApp {
         return;
       }
       const now = this.now();
-      const caughtUp = tick(result.state, now);
+      const caughtUp = tick(result.state, now, this.o.content);
       const summary = summarizeAway(result.state, caughtUp, now, this.o.content);
       const meta = result.meta ?? metaFor(slotId, caughtUp, result.savedAt, result.savedAt, 0);
       // Restored from a backup: the main copy on disk is damaged, so don't rotate it into the backups.

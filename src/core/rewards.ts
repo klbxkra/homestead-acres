@@ -7,6 +7,7 @@ import { bump, pickIndex, reject, roll } from './context';
 import type { Ctx, Tile } from './context';
 import { masteryThresholds } from './economy';
 import { lookup } from './ids';
+import type { RewardReason } from './events';
 import { gainXp } from './progression';
 
 /** Counter names that ribbons can track. */
@@ -18,13 +19,17 @@ export type CounterName =
   | 'itemsBought'
   | 'coinsEarned'
   | 'cropsMastered'
-  | 'collectionsCompleted';
+  | 'collectionsCompleted'
+  | 'neighborHelps'
+  | 'giftsAccepted'
+  | 'contractsCompleted'
+  | 'buildingsBuilt';
 
 /**
  * Pays a reward: coins as listed, XP through the xpGain rule, Farm Cash through
  * farmCashEarnRate, and an item into the gift box.
  */
-export function grantReward(ctx: Ctx, reward: Partial<Reward>, reason: 'mastery' | 'collection' | 'gift'): void {
+export function grantReward(ctx: Ctx, reward: Partial<Reward>, reason: RewardReason): void {
   const { player, rules, content } = ctx;
   player.coins += reward.coins ?? 0;
   player.cash += Math.round((reward.cash ?? 0) * rules.farmCashEarnRate);
@@ -79,7 +84,7 @@ export function isMastered(ctx: Pick<Ctx, 'player'>, cropId: string): boolean {
   return (lookup(ctx.player.masteryStars, cropId) ?? 0) >= 3;
 }
 
-export type CollectibleSource = { crop: string } | { tree: true } | { animal: true } | { plow: true };
+export type CollectibleSource = { crop: string } | { tree: true } | { animal: true } | { plow: true } | { neighbor: true };
 
 /** Rolls for a collectible from every collection that drops from this source. */
 export function rollCollectibles(ctx: Ctx, source: CollectibleSource, at: Tile): void {
@@ -91,7 +96,8 @@ export function rollCollectibles(ctx: Ctx, source: CollectibleSource, at: Tile):
       ('crop' in source && s.crops.includes(source.crop)) ||
       ('tree' in source && s.trees) ||
       ('animal' in source && s.animals) ||
-      ('plow' in source && s.plow);
+      ('plow' in source && s.plow) ||
+      ('neighbor' in source && s.neighbors);
     if (!eligible || !roll(ctx, Math.min(1, p))) continue;
     const item = set.items[pickIndex(ctx, set.items.length)]!;
     bump(ctx.player.collectibles, item.id);

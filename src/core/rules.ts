@@ -46,7 +46,12 @@ export interface WorldRules {
   /** With offlineProgress 'capped': most real hours of absence that count. */
   offlineCapHours: number;
   aiNeighborCount: number;
+  /** Gifts per game day from all neighbours together (fractions are a chance). */
   aiGiftsPerDay: number;
+  /** Helps you can give on each neighbour's farm per game day. */
+  neighborHelpsPerDay: number;
+  /** Multiplier on co-op job time limits. */
+  contractTime: number;
   /** FV1 leaves plots fallow after harvest (needing a new plow); true skips that. */
   keepPlowedAfterHarvest: boolean;
   startingCoins: number;
@@ -74,6 +79,8 @@ const CLASSIC: WorldRules = {
   offlineCapHours: 24,
   aiNeighborCount: 5,
   aiGiftsPerDay: 3,
+  neighborHelpsPerDay: 5,
+  contractTime: 1,
   keepPlowedAfterHarvest: false,
   startingCoins: 200,
   startingCash: 5,
@@ -127,6 +134,8 @@ export const RULE_LIMITS: Record<NumericRuleKey, { min: number; max: number; int
   offlineCapHours: { min: 0, max: 24 * 365 },
   aiNeighborCount: { min: 0, max: 20, integer: true },
   aiGiftsPerDay: { min: 0, max: 100 },
+  neighborHelpsPerDay: { min: 0, max: 50, integer: true },
+  contractTime: { min: 0.1, max: 10 },
   startingCoins: { min: 0, max: 1_000_000_000, integer: true },
   startingCash: { min: 0, max: 1_000_000, integer: true },
 };

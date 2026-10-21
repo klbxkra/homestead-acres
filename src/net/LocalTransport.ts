@@ -34,7 +34,7 @@ export class LocalTransport implements Transport {
   }
 
   tick(realNow: number): void {
-    const next = tick(this.state, realNow);
+    const next = tick(this.state, realNow, this.content);
     if (next === this.state) return;
     this.state = next;
     this.emit([]);

@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { ComponentChildren } from 'preact';
 import type { Session } from '../app/session';
-import { cancelTool, PAINT_TOOLS, selectTool, startVehicle } from '../app/uiState';
+import { cancelTool, PAINT_TOOLS, selectTool, startVehicle, visitNeighbor } from '../app/uiState';
 import type { ToolId } from '../app/uiState';
-import { lookup } from '../core';
+import { activeNeighbors, helpsLeft, lookup } from '../core';
+import type { GameState } from '../core';
 import { cropArt } from '../game/art/artData';
 import { useGameState, useStore } from './hooks';
+import { Avatar } from './NeighborsPanel';
 
 interface ToolDef {
   id: ToolId;
@@ -43,7 +45,9 @@ export function Toolbar({ session }: { session: Session }) {
   const vehicleName = s.vehicleId ? lookup(content.vehicles, s.vehicleId)?.name : null;
   const holding = (s.tool === 'place' && s.placeItemId) || (s.tool === 'move' && s.movingEntityId);
   const gifts = Object.values(player.giftBox).reduce((a, b) => a + b, 0);
+  const mail = player.social.mailbox.length;
   const editTool = EDIT_TOOLS.find((t) => t.id === s.tool);
+  const supply = s.supplyId ? lookup(content.supplies, s.supplyId) : undefined;
 
   const [editOpen, setEditOpen] = useState(false);
   const editRef = useRef<HTMLDivElement>(null);
@@ -92,6 +96,10 @@ export function Toolbar({ session }: { session: Session }) {
       'Tap something to sell it'
     ) : s.tool === 'store' ? (
       'Tap something to put it in storage'
+    ) : s.tool === 'supply' && supply ? (
+      <>
+        Using <b>{supply.name}</b> ({lookup(player.giftBox, supply.id) ?? 0} left): tap a {supply.area}×{supply.area} area
+      </>
     ) : s.tool === 'vehicle' && vehicleName ? (
       <>
         Driving <b>{vehicleName}</b>
@@ -110,6 +118,7 @@ export function Toolbar({ session }: { session: Session }) {
 
   const showPaint = PAINT_TOOLS.includes(s.tool);
   const showContext = showPaint || holding || s.tool !== 'multi';
+  if (s.visiting) return <VisitBar session={session} state={state} />;
 
   return (
     <div class="toolbar interactive" role="toolbar" aria-label="Tools">
@@ -196,8 +205,51 @@ export function Toolbar({ session }: { session: Session }) {
           <ToolBtn icon="🎁" label="Gifts" title="Gift box & storage (I)" onClick={() => ui.set({ panel: 'inventory' })}>
             {gifts > 0 && <span class="tool-badge">{gifts > 99 ? '99+' : gifts}</span>}
           </ToolBtn>
+          <ToolBtn icon="👥" label="Neighbors" title="Neighbors, gifts and co-op jobs (N)" onClick={() => ui.set({ panel: 'neighbors' })}>
+            {mail > 0 && <span class="tool-badge">{mail > 99 ? '99+' : mail}</span>}
+          </ToolBtn>
           <ToolBtn icon="📖" label="Book" title="Farmer's Book: mastery, ribbons, collections (B)" onClick={() => ui.set({ panel: 'book' })} />
           <ToolBtn icon="🏪" label="Market" title="Market (M)" extraClass="market-btn" onClick={() => ui.set({ marketOpen: true })} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** While visiting: go home, or hop to another neighbor (FarmVille's neighbor bar). */
+function VisitBar({ session, state }: { session: Session; state: GameState }) {
+  const { ui } = session;
+  const player = state.players[state.localPlayerId]!;
+  const neighbors = activeNeighbors(player, state.rules);
+  const current = neighbors.find((n) => n.id === ui.get().visiting);
+  const left = current ? helpsLeft(current, state.clock.gameNow, state.rules) : 0;
+  return (
+    <div class="toolbar interactive" role="toolbar" aria-label="Visiting">
+      {current && (
+        <div class="tool-status">
+          Visiting <b>{current.name}</b> · {left > 0 ? `${left} ${left === 1 ? 'help' : 'helps'} left: tap crops, trees and animals` : 'all helped today ✅'}
+        </div>
+      )}
+      <div class="tool-dock">
+        <div class="tool-group tool-group-farm visit-neighbors">
+          {neighbors.map((n) => (
+            <button
+              key={n.id}
+              type="button"
+              class={`tool-btn visit-btn ${n.id === current?.id ? 'active' : ''}`}
+              title={`${n.name} (${helpsLeft(n, state.clock.gameNow, state.rules)} helps left)`}
+              aria-label={`Visit ${n.name}`}
+              aria-pressed={n.id === current?.id}
+              onClick={() => visitNeighbor(ui, n.id)}
+            >
+              <Avatar neighbor={n} size="small" />
+              <span class="tool-label">{n.name}</span>
+              {helpsLeft(n, state.clock.gameNow, state.rules) === 0 && <span class="tool-check">✓</span>}
+            </button>
+          ))}
+        </div>
+        <div class="tool-group tool-group-panels">
+          <ToolBtn icon="🏠" label="Home" title="Go home (Esc)" extraClass="market-btn" onClick={() => visitNeighbor(ui, null)} />
         </div>
       </div>
     </div>

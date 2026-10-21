@@ -2,8 +2,8 @@ import type { ComponentChildren } from 'preact';
 import type { Session } from '../app/session';
 import { GAME_TITLE } from '../config';
 import { toast } from '../app/uiState';
-import { fuelAt, maxLevel, refuelCost, xpForLevel } from '../core';
-import { formatNumber } from './format';
+import { contractDef, contractStatus, contractTotal, fuelAt, fuelCapacity, maxLevel, refuelCost, xpForLevel } from '../core';
+import { formatDuration, formatNumber } from './format';
 import { useGameState } from './hooks';
 
 /** Fuel gauge; tapping it offers a refill for Farm Cash. */
@@ -12,8 +12,9 @@ function FuelChip({ session }: { session: Session }) {
   const state = useGameState(transport);
   const player = state.players[state.localPlayerId]!;
   const content = transport.content;
-  const fuel = fuelAt(player.fuel, state.clock.gameNow, state.rules, content);
-  const cost = refuelCost(player.fuel, state.clock.gameNow, state.rules, content);
+  const max = fuelCapacity(state.farms[state.homeFarmId]!, content);
+  const fuel = fuelAt(player.fuel, state.clock.gameNow, state.rules, content, max);
+  const cost = refuelCost(player.fuel, state.clock.gameNow, state.rules, content, max);
   const refill = () => {
     if (cost === 0) return toast(ui, 'The tank is full.', 'info');
     ui.set({
@@ -29,7 +30,31 @@ function FuelChip({ session }: { session: Session }) {
   };
   return (
     <button type="button" class="hud-chip interactive hud-btn" title="Fuel (tap to refill)" onClick={refill}>
-      ⛽ <span>{Math.floor(fuel)}/{content.base.fuelMax}</span>
+      ⛽ <span>{Math.floor(fuel)}/{max}</span>
+    </button>
+  );
+}
+
+/** The open co-op job at a glance; tap for the details. */
+function JobChip({ session }: { session: Session }) {
+  const { transport, ui } = session;
+  const state = useGameState(transport);
+  const job = state.players[state.localPlayerId]!.contract;
+  const def = job ? contractDef(transport.content, job.contractId) : undefined;
+  if (!job || !def) return null;
+  const status = contractStatus(job, state.clock.gameNow);
+  const done = def.goals.reduce((n, g) => n + Math.min(g.count, contractTotal(job, g.cropId)), 0);
+  const total = def.goals.reduce((n, g) => n + g.count, 0);
+  const label =
+    status === 'complete' ? 'Claim reward!' : status === 'failed' ? 'Out of time' : `${Math.floor((done / total) * 100)}% · ${formatDuration((job.endsAt - state.clock.gameNow) / state.rules.timeScale)}`;
+  return (
+    <button
+      type="button"
+      class={`hud-chip interactive hud-btn hud-job ${status === 'complete' ? 'ready' : ''}`}
+      title={`Co-op job: ${def.name}`}
+      onClick={() => ui.set({ panel: 'neighbors', neighborsTab: 'jobs' })}
+    >
+      📋 <span>{label}</span>
     </button>
   );
 }
@@ -62,6 +87,7 @@ export function Hud({ session, menu }: { session: Session; menu?: ComponentChild
         💵 <span>{formatNumber(player.cash)}</span>
       </div>
       {player.vehicles.length > 0 && <FuelChip session={session} />}
+      <JobChip session={session} />
       {state.rules.timeScale !== 1 && (
         <div class="hud-chip hud-speed" title="Time runs faster than real time (World Rules)">
           ⏩ ×{state.rules.timeScale}

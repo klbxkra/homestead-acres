@@ -5,15 +5,22 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
+  availableContracts,
+  contractDef,
+  contractStatus,
+  contractTotal,
   cropGrowMs,
   cropHarvestCoins,
   cropSeedCost,
   cropStatus,
   dailyStatus,
+  helpKindFor,
+  helpsLeft,
   HOUR_MS,
   isProducing,
   itemCost,
   plowCost,
+  visitedFarm,
 } from '../../src/core';
 import type { CropDef } from '../../src/content';
 import type { WorldRules } from '../../src/core';
@@ -26,24 +33,50 @@ interface Report {
   coins: number;
   harvested: number;
   owned: string[];
+  /** Phase 6 (with `social`): mailbox gifts accepted, neighbour helps, co-op medals. */
+  giftsAccepted: number;
+  helps: number;
+  helpCoins: number;
+  medals: string[];
 }
 
-/** A farmer who checks in every `checkEveryHours` of game time. */
-function play(rules: Partial<WorldRules>, targetLevel: number, maxGameHours: number, checkEveryHours: number): Report {
-  const h = new Harness(rules);
+/**
+ * A farmer who checks in every `checkEveryHours` of game time. With `social`,
+ * they also accept neighbours' gifts, help on every neighbour's farm and run
+ * co-op jobs (planting the job's crops while one is open).
+ */
+function play(rules: Partial<WorldRules>, targetLevel: number, maxGameHours: number, checkEveryHours: number, social = false): Report {
+  const h = new Harness(social ? { aiNeighborCount: 5, ...rules } : rules);
+  let helps = 0;
+  let helpCoins = 0;
+  const medals: string[] = [];
   const start = h.gameNow;
   let actions = 0;
   const act = (c: Parameters<Harness['run']>[0]) => {
     const r = h.run(c);
     if (r.ok) {
       h.state = r.state;
+      h.lastEvents = r.events;
       actions++;
     }
     return r.ok;
   };
 
+  /** The crop an open co-op job still needs, if we can grow it in time. */
+  const jobCrop = (): CropDef | null => {
+    const c = h.player.contract;
+    if (!c || contractStatus(c, h.gameNow) !== 'active') return null;
+    for (const g of contractDef(h.content, c.contractId)?.goals ?? []) {
+      const crop = h.content.crops[g.cropId]!;
+      if (contractTotal(c, g.cropId) < g.count && crop.unlockLevel <= h.player.level && cropSeedCost(crop, h.state.rules) <= h.player.coins) return crop;
+    }
+    return null;
+  };
+
   /** Best coins per hour among crops we can afford right now. */
   const bestCrop = (): CropDef | null => {
+    const job = jobCrop();
+    if (job) return job;
     const r = h.state.rules;
     let best: CropDef | null = null;
     let bestRate = -Infinity;
@@ -65,6 +98,37 @@ function play(rules: Partial<WorldRules>, targetLevel: number, maxGameHours: num
   while (h.player.level < targetLevel && h.gameNow - start < maxGameHours * HOUR_MS) {
     const rulesNow = h.state.rules;
     if (dailyStatus(h.player, h.realNow, h.content).available) act({ type: 'claimDailyBonus' });
+    if (social) {
+      if (h.player.social.mailbox.length) act({ type: 'acceptGifts' });
+      for (const n of h.player.social.neighbors) {
+        const farm = visitedFarm(n, h.player, h.gameNow, h.content, h.state.rules);
+        for (const e of Object.values(farm.entities)) {
+          if (helpsLeft(h.player.social.neighbors.find((x) => x.id === n.id)!, h.gameNow, h.state.rules) === 0) break;
+          if (!helpKindFor(e, h.gameNow, h.state.rules)) continue;
+          const coins = h.player.coins;
+          if (act({ type: 'helpNeighbor', neighborId: n.id, x: e.x, y: e.y })) {
+            helps++;
+            helpCoins += h.player.coins - coins;
+          }
+        }
+      }
+      const c = h.player.contract;
+      if (c && contractStatus(c, h.gameNow) !== 'active') {
+        const medal = contractStatus(c, h.gameNow) === 'complete';
+        if (act({ type: 'claimContract' }) && medal) {
+          const e = h.lastEvents.find((x) => x.type === 'contractClaimed');
+          if (e?.type === 'contractClaimed') medals.push(`${e.contractId}:${e.medal}`);
+        }
+      }
+      if (!h.player.contract) {
+        // The newest job whose crops all grow within a check-in or two.
+        const doable = availableContracts(h.player, h.content).filter((j) =>
+          j.goals.every((g) => cropGrowMs(h.content.crops[g.cropId]!, h.state.rules) <= checkEveryHours * 2 * HOUR_MS),
+        );
+        const job = doable.at(-1);
+        if (job) act({ type: 'startContract', contractId: job.id, partners: h.player.social.neighbors.slice(0, 2).map((n) => n.id) });
+      }
+    }
 
     // Collect from everything that's ready.
     for (const e of Object.values(h.farm.entities)) {
@@ -111,6 +175,10 @@ function play(rules: Partial<WorldRules>, targetLevel: number, maxGameHours: num
     coins: p.coins,
     harvested: p.stats.counters['cropsHarvested'] ?? 0,
     owned: Object.values(h.farm.entities).flatMap((e) => (e.kind === 'plot' ? [] : [e.itemId])),
+    giftsAccepted: p.stats.counters['giftsAccepted'] ?? 0,
+    helps,
+    helpCoins,
+    medals,
   };
 }
 
@@ -128,5 +196,19 @@ describe('playthrough', () => {
     expect(r.level).toBeGreaterThanOrEqual(10);
     expect(r.gameHours).toBeLessThan(24 * 14);
     expect(r.harvested).toBeGreaterThan(100);
+  });
+
+  it('Phase 6: two weeks on Classic with neighbours gives a steady flow of gifts, helps and co-op medals', () => {
+    const days = 14;
+    const r = play({}, 99, 24 * days, 4, true);
+    console.info('Classic social playthrough, 14 days:', JSON.stringify({ ...r, owned: r.owned.length }));
+    // About 3 gifts a day plus a thank-you per neighbour per day for helping out, plus 2 welcome gifts.
+    expect(r.giftsAccepted).toBeGreaterThan(days * 3);
+    expect(r.giftsAccepted).toBeLessThan(days * 10);
+    // Every neighbour helped 5 times a day; helps are pocket money next to farming.
+    expect(r.helps).toBeGreaterThanOrEqual(days * 5 * 5 - 25);
+    expect(r.helpCoins).toBeLessThan(r.coins + 50_000);
+    expect(r.medals.length).toBeGreaterThanOrEqual(3);
+    expect(r.medals.some((m) => m.endsWith(':gold'))).toBe(true);
   });
 });

@@ -11,7 +11,8 @@ const num = z.number(); // zod 4 rejects NaN and Infinity
 const int = z.number().int();
 const id = z.string().min(1).max(200);
 
-const cropInstance = z.object({ cropId: id, plantedAt: num, readyAt: num });
+const cropInstance = z.object({ cropId: id, plantedAt: num, readyAt: num, fertilized: z.boolean().optional() });
+const counts = z.record(z.string(), int.nonnegative());
 
 const entityBase = { id, ownerId: id, x: int, y: int };
 
@@ -25,6 +26,7 @@ const building = z.object({
   itemId: id,
   rotated: z.boolean(),
   housed: z.array(z.object({ itemId: id, readyAt: num })).max(1000),
+  parts: counts.optional(),
 });
 const entity = z.discriminatedUnion('kind', [plot, decoration, tree, animal, building]);
 
@@ -35,6 +37,37 @@ const farm = z.object({
   width: int.min(1).max(200),
   height: int.min(1).max(200),
   entities: z.record(z.string(), entity),
+});
+
+const neighbor = z.object({
+  id,
+  name: z.string().max(200),
+  avatar: z.string().max(40),
+  color: z.string().max(40),
+  levelOffset: int,
+  seed: int,
+  helpDay: int,
+  helped: z.array(id).max(1000),
+  helpsGiven: int.nonnegative(),
+});
+
+const social = z.object({
+  seed: int,
+  processedDay: int,
+  neighbors: z.array(neighbor).max(100),
+  mailbox: z.array(z.object({ id, neighborId: id, itemId: id, count: int.positive(), sentAt: num })).max(1000),
+  log: z.array(z.object({ at: num, neighborId: id, kind: z.enum(['fertilized', 'fed']), count: int.nonnegative() })).max(1000),
+});
+
+const medal = z.enum(['gold', 'silver', 'bronze']);
+
+const contract = z.object({
+  contractId: id,
+  startedAt: num,
+  endsAt: num,
+  partners: z.array(id).max(20),
+  progress: z.record(z.string(), counts),
+  completedAt: num.nullable(),
 });
 
 const player = z.object({
@@ -53,6 +86,9 @@ const player = z.object({
   fuel: z.object({ amount: num, updatedAt: num }),
   vehicles: z.array(id).max(100),
   daily: z.object({ lastClaimRealAt: num.nullable(), streak: int.nonnegative() }),
+  social,
+  contract: contract.nullable(),
+  contractMedals: z.record(z.string(), medal),
 });
 
 const override = z.object({
@@ -82,6 +118,8 @@ const rules = z.object({
   offlineCapHours: num.nonnegative(),
   aiNeighborCount: int.nonnegative(),
   aiGiftsPerDay: num.nonnegative(),
+  neighborHelpsPerDay: int.nonnegative(),
+  contractTime: num.positive(),
   keepPlowedAfterHarvest: z.boolean(),
   startingCoins: num.nonnegative(),
   startingCash: num.nonnegative(),

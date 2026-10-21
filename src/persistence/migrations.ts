@@ -4,7 +4,7 @@
  * version's raw JSON. Steps run in order: v1 -> v2 -> v3 ...
  * Never edit an existing step after release; add a new one instead.
  */
-import { SCHEMA_VERSION } from '../core';
+import { DAY_MS, SCHEMA_VERSION } from '../core';
 
 /** Upgrades raw state of version N (the key) to version N + 1. */
 export type Migration = (state: Record<string, unknown>) => Record<string, unknown>;
@@ -42,6 +42,31 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
       }),
     );
     return { ...s, players: upgraded, rules: { ...(s['rules'] as object), masteryGoal: 1 } };
+  },
+
+  /**
+   * v2 -> v3 (Phase 6): players gain AI-neighbour state (neighbours are generated
+   * on the next tick, with welcome gifts), a co-op job slot and medals; rules gain
+   * neighborHelpsPerDay and contractTime. Neighbour activity starts from today, so
+   * an old save doesn't receive a backlog of gifts.
+   */
+  2: (s) => {
+    const clock = (s['clock'] ?? {}) as { gameNow?: number };
+    const day = Math.floor((clock.gameNow ?? 0) / DAY_MS);
+    const seed = typeof s['rng'] === 'number' ? (s['rng'] as number) : 1;
+    const players = (s['players'] ?? {}) as Record<string, Record<string, unknown>>;
+    const upgraded = Object.fromEntries(
+      Object.entries(players).map(([id, p]) => [
+        id,
+        {
+          ...p,
+          social: { seed: seed ^ 0x5eed, processedDay: day, neighbors: [], mailbox: [], log: [] },
+          contract: null,
+          contractMedals: {},
+        },
+      ]),
+    );
+    return { ...s, players: upgraded, rules: { ...(s['rules'] as object), neighborHelpsPerDay: 5, contractTime: 1 } };
   },
 };
 

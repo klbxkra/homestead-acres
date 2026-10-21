@@ -55,6 +55,9 @@ D:\Farmville
 │  │  ├─ rewards.ts         # counters + ribbons, mastery, collectibles, reward payout
 │  │  ├─ vehicles.ts        # fuel, buy, refuel, area work
 │  │  ├─ daily.ts           # daily bonus (real time) and farm expansion
+│  │  ├─ neighbors.ts       # AI neighbours: generation, daily gifts/visits, mailbox, helping, generated farms
+│  │  ├─ contracts.ts       # solo co-op jobs: progress per participant, partner shares, medals
+│  │  ├─ supplies.ts        # Fertilizer / Instagrow / Unwither / Fuel Can, construction parts
 │  │  ├─ events.ts          # GameEvent union (drives effects; broadcast in co-op)
 │  │  ├─ time.ts            # clock advance, offline-progress policy
 │  │  ├─ crops.ts           # derived crop/plot status, growth stages, withering
@@ -64,7 +67,7 @@ D:\Farmville
 │  │  ├─ grid.ts            # tile occupancy, footprints, placement validation
 │  │  ├─ rng.ts             # seeded PRNG (mulberry32) stored in state
 │  │  └─ ids.ts             # entity IDs (string, never array index), safe record lookup
-│  ├─ content/              # JSON data tables: crops, trees, animals, buildings, decorations, vehicles, expansions, ribbons, collections, levels, base
+│  ├─ content/              # JSON data tables: crops, trees, animals, buildings, decorations, vehicles, supplies, expansions, ribbons, collections, contracts, gifts, neighbors (name pools), levels, base
 │  │  ├─ schema.ts          # zod schemas + types
 │  │  └─ index.ts           # validates tables, builds lookups (defaultContent)
 │  ├─ persistence/
@@ -75,7 +78,7 @@ D:\Farmville
 │  │  ├─ loadSlot.ts        # emergency (if newer) -> main -> backups fallback
 │  │  ├─ serialize.ts       # save envelope, checksum, decode (migrate + validate)
 │  │  ├─ schema.ts          # zod schema for GameState
-│  │  └─ migrations.ts      # v1->v2, v2->v3 ... (none yet)
+│  │  └─ migrations.ts      # v1->v2 (Phase 5), v2->v3 (Phase 6)
 │  ├─ platform/
 │  │  ├─ lifecycle.ts       # visibilitychange/pagehide/freeze hooks
 │  │  ├─ device.ts          # touch/mouse detection, orientation, safe areas, DPR cap
@@ -94,7 +97,7 @@ D:\Farmville
 │  │  ├─ Transport.ts       # interface: send(cmd), tick, subscribe(state, events)
 │  │  └─ LocalTransport.ts  # applies commands directly to local state
 │  ├─ game/                 # Phaser scenes & rendering
-│  │  ├─ scenes/            # FarmScene (Visit later)
+│  │  ├─ scenes/            # FarmScene (your farm, or a neighbour's while visiting)
 │  │  ├─ iso.ts             # tile<->screen projection, depth sorting
 │  │  ├─ art/               # placeholder textures drawn in code (replaced by an atlas in Phase 7)
 │  │  ├─ input/             # gesture recognizer (pure) + DOM pointer binding + keyboard
@@ -119,7 +122,7 @@ D:\Farmville
 - **Plow** a plot: costs coins (default 15), gives 1 XP.
 - **Plant** a seed: costs coins, gives XP. Starts a timer `growMs = baseGrow × rules.cropGrowth`. The ripe time is fixed at planting, so changing rates only affects new plantings.
 - States: `fallow → plowed → growing (stages 0-2) → ripe → withered`.
-- **Wither**: a ripe crop withers after `ripeWindow = growMs × rules.witherWindowFactor` (FV1 used roughly 1× grow time). This is derived from the *current* rules, so switching withering off also revives crops that already withered. A withered crop can be plowed over (paying the plow fee), or revived with an Unwither item (Phase 5). **Withering can be turned off.**
+- **Wither**: a ripe crop withers after `ripeWindow = growMs × rules.witherWindowFactor` (FV1 used roughly 1× grow time). This is derived from the *current* rules, so switching withering off also revives crops that already withered. A withered crop can be plowed over (paying the plow fee), or revived with an Unwither Tonic (Phase 6). **Withering can be turned off.**
 - **Harvest**: gives coins (sale value), counts toward mastery, and leaves the plot *fallow*, needing a new plow (FV1 behavior; the `keepPlowedAfterHarvest` rule skips that).
 - Example crop set (original names, FV1-like timings): 4h Strawberries, 8h Eggplant, 12h Wheat, 1d Corn, 2d Pumpkin, 3d Soybeans, 4h Raspberry, plus about 25 more unlocked by level.
 
@@ -186,6 +189,8 @@ interface WorldRules {
   offlineCapHours: number;
   aiNeighborCount: number;
   aiGiftsPerDay: number;
+  neighborHelpsPerDay: number;  // helps per neighbour per game day (added in save v3)
+  contractTime: number;         // multiplier on co-op job time limits (added in save v3)
   keepPlowedAfterHarvest: boolean;
   startingCoins: number;
   startingCash: number;
@@ -439,16 +444,54 @@ Found and fixed during verification:
   - **In the browser:** v1 farm migration; every item placed and rendered; ready markers; multi-tool collecting from the coop and a tree; cow dragged into the dairy; store/place round trip; turning in a collection; tractor area plow with fuel; expansion; daily bonus.
 
 Not in Phase 5 (moved on purpose):
-- Construction buildings built from parts, Unwither and Fertilize items, and animal "babies" go with the gift economy in **Phase 6**.
+- Construction buildings built from parts, Unwither and Fertilize items, and animal "babies" go with the gift economy in **Phase 6** (done there).
 - An orchard building and the crafting cottage are **later content**.
 
 Balance note: early levels come fast on Classic (as in FV1). Tune with `xpGain` / the level table after real play.
 
-### Phase 6: Single-player social replacements (3–5 days)
-- [ ] AI neighbors (generation, daily gifts, fertilize visits)
-- [ ] Visiting AI farms (help actions)
-- [ ] Solo co-op contracts
-- [ ] **Verify**: simulated multi-day runs (time-scale) produce sane gift and contract flows
+### Phase 6: Single-player social replacements (3–5 days) ✅ done 2026-10-22
+- [x] **AI neighbors** (`aiNeighborCount`, up to 20):
+  - Generated from a seed kept in the save: original names, an emoji picture and colour, and a level that keeps pace with yours (your level −3 to +6).
+  - Changing the count keeps the existing neighbours; the first two send welcome gifts.
+  - Everything runs on **game days** (so faster game speeds speed them up, unlike the real-time daily bonus), caught up for at most 7 days after an absence. Each day:
+    - `aiGiftsPerDay` gifts go to a **mailbox** (max 30), weighted toward parts an unfinished building needs; accept one or all into the gift box.
+    - each neighbour may visit (40%) to fertilize up to 4 growing crops, or feed the animals in a building (they become ready).
+  - Visits appear as toasts while playing, and in the welcome-back popup.
+- [x] **Visiting AI farms**:
+  - Their farm is generated from their seed, level and the day, never stored. It has a crop field in mixed states, animals, a row of trees, a coop and decorations, and grows to 22×22 with their level.
+  - Tap crops, trees or animals to help: +10 coins and +2 XP each (rule-scaled), `neighborHelpsPerDay` (5) per neighbour per day, and a thank-you gift after the last one. Helping can also drop Neighborly Notes collectibles.
+  - Helped things show a tick; withered crops you helped look revived. A neighbour bar replaces the toolbar, with Home or Esc to go back.
+- [x] **Solo co-op jobs** (11 jobs, levels 2–36):
+  - One at a time: grow the listed crops before the deadline (`contractTime` scales it).
+  - Up to 2 AI partners each grow 8% of every goal at each game midnight.
+  - Gold (first half of the time; full reward plus a Gold Trophy), silver (by 75%; 60%) or bronze (35%). The best medal per job is kept.
+  - Progress is stored per participant, so real co-op (Phase 8) can add players as partners unchanged.
+- [x] **From Phase 5's deferred list:**
+  - Construction buildings: Orchard (holds 20 trees), Garage (+10 fuel tank) and Duck Pond. They are bought as a frame and finished with Nails, Boards, Bricks and Shingles from neighbours or the market. A frame does nothing until finished; a parts dialog offers "Buy the rest".
+  - Supplies (new Market tab, used from the gift box): Fertilizer (3×3, +25% coins at harvest), Instagrow (3×3, ripen now), Unwither Tonic (whole farm), Fuel Can (+5).
+  - Animal babies: each housed animal collected has a 2% (× Lucky finds) chance of a baby in the gift box.
+- [x] **Content added to earlier phases:**
+  - 15 more buyable decorations; 4 trees; 4 animals (turkey, goose, donkey, llama), which also move into the existing coops, pens and stables.
+  - 2 collections (Neighborly Notes, Kitchen Garden); 4 ribbons (Good Neighbor, Gift Gatherer, Co-op Champion, Master Builder); farm sizes 24×24 and 26×26.
+  - A test makes sure every item has placeholder art.
+- [x] **UI**:
+  - 👥 Neighbors panel (Neighbors / Mailbox / Jobs) with a mailbox badge; HUD job chip (progress and time left; "Claim reward!" when done).
+  - Fuel gauge shows the garage capacity. World Rules gained a "Neighbors & co-op jobs" section.
+  - The N key opens the panel. Panels keep a fixed height so tabs don't jump.
+  - On phones, neighbour cards are compact rows.
+- [x] **Verify**:
+  - **Tests:** 240 unit tests: neighbours, gifts and backlog caps, visits, helps and limits, generated farms (deterministic, no overlaps, level-appropriate crops), co-op jobs and medals, supplies, construction, babies, the v2 → v3 migration and art coverage. A mutation check of 5 Phase 6 rules found 2 gaps, now covered by new tests.
+  - **Bot:** a two-week Classic bot playthrough with neighbours accepted 119 gifts (about 8.5 a day) and gave 375 helps (6,350 coins with ribbon bonuses, small next to farming). It earned 3 gold co-op medals.
+  - **Performance:** a full 26×26 farm applies a command in about 1 ms, with tile lookups around 6 µs.
+  - **In the browser:**
+    - Imported a Phase 5 save; neighbours and gifts arrived.
+    - Visited Cyrus's farm and helped 5 times with real clicks (ticks, coins, thank-you gift, a collectible).
+    - Accepted the mailbox; ran a job to a gold claim (trophy, ribbon).
+    - Unwither Tonic revived 8 pumpkins; aimed Fertilizer with the 3×3 preview.
+    - Built a Garage from a frame via "Buy the rest" (tank 20, Master Builder ribbon).
+    - Checked the phone layouts of the panel and the visit bar.
+
+Balance note: thank-you gifts make daily visiting worth it; with `aiGiftsPerDay` at 0 they stop too.
 
 ### Phase 7: Polish, PWA, ship (2–3.5 weeks)
 - [ ] Farmer avatar and action queue, animations, particles, SFX and music, haptics
@@ -498,3 +541,4 @@ Balance note: early levels come fast on Classic (as in FV1). Tune with `xpGain` 
 - **Name and art**: original; no Zynga assets.
 - **Offline progress**: on by default, with wall-clock timers (FV1 behavior), configurable per save.
 - **Co-op approach**: host-authoritative WebSocket (WebRTC considered), deferred to Phase 8.
+- **Neighbour time**: neighbour gifts, visits, helps and co-op job partners run on game days (they follow the game speed); only the daily login bonus uses real days.

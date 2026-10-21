@@ -3,12 +3,13 @@ import type { Store } from './store';
 
 /** Interaction state that is not part of the game save: current tool, open menus, popups. */
 
-export type ToolId = 'multi' | 'plow' | 'seed' | 'harvest' | 'move' | 'sell' | 'place' | 'store' | 'vehicle';
-export type MarketTab = 'seeds' | 'trees' | 'animals' | 'buildings' | 'decor' | 'vehicles' | 'expand';
+export type ToolId = 'multi' | 'plow' | 'seed' | 'harvest' | 'move' | 'sell' | 'place' | 'store' | 'vehicle' | 'supply';
+export type MarketTab = 'seeds' | 'trees' | 'animals' | 'buildings' | 'decor' | 'supplies' | 'vehicles' | 'expand';
 export type PlaceSource = 'market' | 'giftBox' | 'storage';
 /** Side panels other than the market. */
-export type PanelId = 'inventory' | 'book';
+export type PanelId = 'inventory' | 'book' | 'neighbors';
 export type BookTab = 'mastery' | 'ribbons' | 'collections';
+export type NeighborsTab = 'neighbors' | 'mailbox' | 'jobs';
 
 export interface Tooltip {
   /** CSS pixels relative to the viewport. */
@@ -41,6 +42,8 @@ export interface UiState {
   movingEntityId: string | null;
   /** Vehicle driven by the vehicle tool. */
   vehicleId: string | null;
+  /** Supply (Fertilizer, Instagrow) aimed with the supply tool. */
+  supplyId: string | null;
   rotated: boolean;
   /** When on, a one-finger drag applies the tool to every plot it crosses instead of panning. */
   paint: boolean;
@@ -48,6 +51,11 @@ export interface UiState {
   marketTab: MarketTab;
   panel: PanelId | null;
   bookTab: BookTab;
+  neighborsTab: NeighborsTab;
+  /** Neighbour whose farm is on screen, or null at home. */
+  visiting: string | null;
+  /** Construction building whose parts dialog is open. */
+  constructionId: string | null;
   tooltip: Tooltip | null;
   toasts: Toast[];
   confirm: ConfirmRequest | null;
@@ -63,12 +71,16 @@ export function initialUiState(): UiState {
     placeFrom: 'market',
     movingEntityId: null,
     vehicleId: null,
+    supplyId: null,
     rotated: false,
     paint: false,
     marketOpen: false,
     marketTab: 'seeds',
     panel: null,
     bookTab: 'mastery',
+    neighborsTab: 'neighbors',
+    visiting: null,
+    constructionId: null,
     tooltip: null,
     toasts: [],
     confirm: null,
@@ -89,6 +101,7 @@ export function selectTool(ui: UiStore, tool: ToolId): void {
     movingEntityId: null,
     placeItemId: tool === 'place' ? s.placeItemId : null,
     vehicleId: tool === 'vehicle' ? s.vehicleId : null,
+    supplyId: tool === 'supply' ? s.supplyId : null,
     rotated: false,
     tooltip: null,
   });
@@ -108,12 +121,36 @@ export function startVehicle(ui: UiStore, vehicleId: string): void {
   ui.set({ tool: 'vehicle', vehicleId, movingEntityId: null, placeItemId: null, marketOpen: false, tooltip: null });
 }
 
+/** Aim an area supply (Fertilizer, Instagrow) at the farm. */
+export function startSupply(ui: UiStore, supplyId: string): void {
+  ui.set({ tool: 'supply', supplyId, movingEntityId: null, placeItemId: null, vehicleId: null, marketOpen: false, panel: null, tooltip: null });
+}
+
+/** Go and look at a neighbour's farm (null = back home). */
+export function visitNeighbor(ui: UiStore, neighborId: string | null): void {
+  ui.set({
+    visiting: neighborId,
+    tool: 'multi',
+    movingEntityId: null,
+    placeItemId: null,
+    vehicleId: null,
+    supplyId: null,
+    paint: false,
+    marketOpen: false,
+    panel: null,
+    constructionId: null,
+    tooltip: null,
+  });
+}
+
 /** Esc / right-click: drop whatever is held, then fall back to the multi-tool. */
 export function cancelTool(ui: UiStore): void {
   const s = ui.get();
   if (s.confirm) return ui.set({ confirm: null });
   if (s.marketOpen) return ui.set({ marketOpen: false });
   if (s.panel) return ui.set({ panel: null });
+  if (s.constructionId) return ui.set({ constructionId: null });
+  if (s.visiting) return visitNeighbor(ui, null);
   if (s.tool === 'move' && s.movingEntityId) return ui.set({ movingEntityId: null, rotated: false });
   selectTool(ui, 'multi');
 }

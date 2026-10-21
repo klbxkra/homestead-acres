@@ -4,15 +4,20 @@ import animals from '../../src/content/animals.json';
 import base from '../../src/content/base.json';
 import buildings from '../../src/content/buildings.json';
 import collections from '../../src/content/collections.json';
+import contracts from '../../src/content/contracts.json';
 import crops from '../../src/content/crops.json';
 import decorations from '../../src/content/decorations.json';
 import expansions from '../../src/content/expansions.json';
+import gifts from '../../src/content/gifts.json';
 import levels from '../../src/content/levels.json';
+import neighbors from '../../src/content/neighbors.json';
 import ribbons from '../../src/content/ribbons.json';
+import supplies from '../../src/content/supplies.json';
 import trees from '../../src/content/trees.json';
 import vehicles from '../../src/content/vehicles.json';
 
-const raw = () => structuredClone({ crops, decorations, trees, animals, buildings, vehicles, expansions, ribbons, collections, levels, base });
+const raw = () =>
+  structuredClone({ crops, decorations, trees, animals, buildings, vehicles, expansions, ribbons, collections, supplies, contracts, neighbors, gifts, levels, base });
 
 describe('content', () => {
   it('loads the default tables', () => {
@@ -21,7 +26,31 @@ describe('content', () => {
     expect(defaultContent.levels.thresholds).toHaveLength(70);
     expect(Object.keys(defaultContent.trees).length).toBeGreaterThanOrEqual(8);
     expect(Object.keys(defaultContent.animals).length).toBeGreaterThanOrEqual(6);
-    expect(defaultContent.expansions.map((e) => e.size)).toEqual([14, 16, 18, 20, 22]);
+    expect(defaultContent.expansions.map((e) => e.size)).toEqual([14, 16, 18, 20, 22, 24, 26]);
+    expect(Object.keys(defaultContent.supplies).length).toBeGreaterThanOrEqual(8);
+    expect(defaultContent.contracts.length).toBeGreaterThanOrEqual(10);
+    expect(defaultContent.neighborPool.names.length).toBeGreaterThanOrEqual(20); // enough for the 20-neighbour limit
+  });
+
+  it('defines construction buildings whose parts all exist, and gifts that can be received', () => {
+    const orchard = defaultContent.buildings['orchard']!;
+    expect(orchard.construction).toBeDefined();
+    for (const part of Object.keys(orchard.construction!)) expect(defaultContent.supplies[part]?.kind).toBe('part');
+    // Every tree can live in the orchard.
+    expect(new Set(orchard.houses)).toEqual(new Set(Object.keys(defaultContent.trees)));
+    for (const g of defaultContent.gifts) expect(defaultContent.placeables[g.itemId] ?? defaultContent.supplies[g.itemId]).toBeDefined();
+  });
+
+  it('rejects construction parts, contract crops and gifts that do not exist', () => {
+    const r1 = raw();
+    (r1.buildings.find((b) => b.id === 'garage') as { construction: Record<string, number> }).construction = { gold_bar: 1 };
+    expect(() => buildContent(r1)).toThrow(/unknown part "gold_bar"/);
+    const r2 = raw();
+    r2.contracts[0]!.goals[0]!.cropId = 'moonflower';
+    expect(() => buildContent(r2)).toThrow(/unknown crop "moonflower"/);
+    const r3 = raw();
+    r3.gifts[0]!.itemId = 'strawberry';
+    expect(() => buildContent(r3)).toThrow(/gift "strawberry"/);
   });
 
   it('unlocks crops across levels 1 to 40', () => {
@@ -54,7 +83,7 @@ describe('content', () => {
   it('rejects references to things that do not exist', () => {
     const r1 = raw();
     r1.buildings[0]!.houses = ['dragon'];
-    expect(() => buildContent(r1)).toThrow(/unknown animal "dragon"/);
+    expect(() => buildContent(r1)).toThrow(/unknown animal or tree "dragon"/);
     const r2 = raw();
     r2.collections[0]!.sources.crops = ['moonflower'];
     expect(() => buildContent(r2)).toThrow(/unknown crop "moonflower"/);

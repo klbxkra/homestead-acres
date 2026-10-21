@@ -15,11 +15,12 @@ import {
   lookup,
   nextExpansion,
   productionYield,
+  supplyPrice,
   treeCycleMs,
   vehicleCost,
 } from '../core';
 import type { GameState, PlayerState, WorldRules } from '../core';
-import { cropArt, itemArtCss } from '../game/art/artData';
+import { cropArt, itemArtCss, itemIcon } from '../game/art/artData';
 import { formatDuration, formatNumber } from './format';
 import { useGameState, useStore } from './hooks';
 
@@ -29,6 +30,7 @@ const TABS: { id: MarketTab; icon: string; label: string }[] = [
   { id: 'animals', icon: '🐔', label: 'Animals' },
   { id: 'buildings', icon: '🏠', label: 'Buildings' },
   { id: 'decor', icon: '🌼', label: 'Decor' },
+  { id: 'supplies', icon: '🧪', label: 'Supplies' },
   { id: 'vehicles', icon: '🚜', label: 'Vehicles' },
   { id: 'expand', icon: '📐', label: 'Expand' },
 ];
@@ -75,6 +77,7 @@ export function Market({ session }: { session: Session }) {
           {(s.marketTab === 'trees' || s.marketTab === 'animals' || s.marketTab === 'buildings' || s.marketTab === 'decor') && (
             <ItemCards session={session} tab={s.marketTab} player={player} rules={state.rules} />
           )}
+          {s.marketTab === 'supplies' && <SupplyCards session={session} player={player} rules={state.rules} />}
           {s.marketTab === 'vehicles' && <VehicleCards session={session} player={player} rules={state.rules} />}
           {s.marketTab === 'expand' && <ExpandCard session={session} state={state} player={player} />}
         </div>
@@ -168,14 +171,69 @@ function ItemDetails({ item, content, rules }: { item: PlaceableInfo; content: C
   }
   if (item.kind === 'building') {
     const b = content.buildings[item.id]!;
-    const homes = b.houses.map((id) => lookup(content.animals, id)?.name).filter(Boolean).join(', ');
+    const forTrees = b.houses.length > 0 && b.houses.every((id) => lookup(content.trees, id));
+    const homes = forTrees ? 'fruit trees' : b.houses.map((id) => lookup(content.animals, id)?.name).filter(Boolean).join(', ');
+    const what = homes ? `Holds ${b.capacity}: ${homes}` : b.fuelBonus ? `Fuel tank +${b.fuelBonus}` : `+${b.storage} storage`;
+    const parts = b.construction ? Object.values(b.construction).reduce((a, n) => a + n, 0) : 0;
     return (
-      <span class="card-line">
-        {item.width}×{item.height} · {homes ? `Holds ${b.capacity}: ${homes}` : `+${b.storage} storage`}
-      </span>
+      <>
+        <span class="card-line">
+          {item.width}×{item.height} · {what}
+        </span>
+        {parts > 0 && <span class="card-line card-parts">🏗️ Built with {parts} parts</span>}
+      </>
     );
   }
   return <span class="card-line">{item.width}×{item.height}</span>;
+}
+
+/** Consumables and building parts. They go to the gift box, so the market stays open for more. */
+function SupplyCards({ session, player, rules }: { session: Session; player: PlayerState; rules: WorldRules }) {
+  const { ui, transport } = session;
+  const content = transport.content;
+  const supplies = Object.values(content.supplies).sort((a, b) => (a.kind === 'part' ? 1 : 0) - (b.kind === 'part' ? 1 : 0) || a.unlockLevel - b.unlockLevel);
+  const buy = (itemId: string, count: number) => {
+    const result = transport.send({ type: 'buySupply', itemId, count });
+    if (!result.ok) toast(ui, result.error.message, 'error');
+  };
+  return (
+    <>
+      {supplies.map((sup) => {
+        const locked = player.level < sup.unlockLevel;
+        const price = supplyPrice(sup, rules);
+        const label = price.cash ? `💵 ${price.cash}` : `🪙 ${formatNumber(price.coins)}`;
+        const owned = lookup(player.giftBox, sup.id) ?? 0;
+        const afford = (n: number) => player.coins >= price.coins * n && player.cash >= price.cash * n;
+        return (
+          <div key={sup.id} class={`card supply-card ${locked ? 'is-locked' : ''}`}>
+            <span class="swatch" style={{ background: itemArtCss(sup.id) }}>
+              {itemIcon(sup.id)}
+            </span>
+            <span class="card-name">{sup.name}</span>
+            {locked ? (
+              <span class="card-lock">🔒 Level {sup.unlockLevel}</span>
+            ) : (
+              <>
+                <span class="card-line">
+                  {label}
+                  {owned > 0 && <span class="muted"> · have {owned}</span>}
+                </span>
+                <span class="card-line muted">{sup.description}</span>
+                <div class="card-actions">
+                  <button type="button" class="btn btn-small btn-primary" disabled={!afford(1)} onClick={() => buy(sup.id, 1)}>
+                    Buy
+                  </button>
+                  <button type="button" class="btn btn-small" disabled={!afford(5)} onClick={() => buy(sup.id, 5)}>
+                    ×5
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        );
+      })}
+    </>
+  );
 }
 
 function VehicleCards({ session, player, rules }: { session: Session; player: PlayerState; rules: WorldRules }) {

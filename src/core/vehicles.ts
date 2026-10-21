@@ -8,20 +8,28 @@ import { harvestCrop, plant, plow } from './fieldwork';
 import { entityAt } from './grid';
 import { lookup } from './ids';
 import type { WorldRules } from './rules';
-import type { FuelState } from './state';
+import type { FarmState, FuelState } from './state';
 import { HOUR_MS } from './time';
 
-/** Fuel available at game time `now` (it regenerates per game hour, up to the tank size). */
-export function fuelAt(fuel: FuelState, now: number, rules: WorldRules, content: Content): number {
-  const max = content.base.fuelMax;
+/** Tank size: the base tank plus every finished garage. */
+export function fuelCapacity(farm: FarmState, content: Content): number {
+  let max = content.base.fuelMax;
+  for (const e of Object.values(farm.entities)) {
+    if (e.kind === 'building' && e.parts === undefined) max += lookup(content.buildings, e.itemId)?.fuelBonus ?? 0;
+  }
+  return max;
+}
+
+/** Fuel available at game time `now` (it regenerates per game hour, up to the tank size `max`). */
+export function fuelAt(fuel: FuelState, now: number, rules: WorldRules, content: Content, max = content.base.fuelMax): number {
   if (fuel.amount >= max) return fuel.amount;
   const regen = (Math.max(0, now - fuel.updatedAt) / HOUR_MS) * rules.fuelRegenPerHour;
   return Math.min(max, fuel.amount + regen);
 }
 
 /** Farm Cash needed to fill the tank right now. */
-export function refuelCost(fuel: FuelState, now: number, rules: WorldRules, content: Content): number {
-  const missing = content.base.fuelMax - fuelAt(fuel, now, rules, content);
+export function refuelCost(fuel: FuelState, now: number, rules: WorldRules, content: Content, max = content.base.fuelMax): number {
+  const missing = max - fuelAt(fuel, now, rules, content, max);
   return missing <= 0 ? 0 : Math.ceil(missing / content.base.fuelPerCash);
 }
 
@@ -36,11 +44,12 @@ export function buyVehicle(ctx: Ctx, vehicleId: string): void {
 }
 
 export function refuel(ctx: Ctx): void {
-  const cash = refuelCost(ctx.player.fuel, ctx.now, ctx.rules, ctx.content);
+  const max = fuelCapacity(ctx.farm, ctx.content);
+  const cash = refuelCost(ctx.player.fuel, ctx.now, ctx.rules, ctx.content, max);
   if (cash === 0) reject('nothing_to_do', 'The tank is already full.');
   spendCash(ctx, cash);
-  ctx.player.fuel = { amount: ctx.content.base.fuelMax, updatedAt: ctx.now };
-  ctx.events.push({ type: 'refueled', cash, fuel: ctx.content.base.fuelMax });
+  ctx.player.fuel = { amount: max, updatedAt: ctx.now };
+  ctx.events.push({ type: 'refueled', cash, fuel: max });
 }
 
 /**
@@ -53,7 +62,7 @@ export function useVehicle(ctx: Ctx, vehicleId: string, at: Tile, cropId: string
   const vehicle = lookup(ctx.content.vehicles, vehicleId) ?? reject('unknown_item', 'Unknown vehicle.');
   if (!ctx.player.vehicles.includes(vehicleId)) reject('not_owned', `You don't own a ${vehicle.name}.`);
   if (vehicle.actions.length === 1 && vehicle.actions[0] === 'plant' && !cropId) reject('invalid', 'Choose seeds for the seeder first.');
-  const fuel = fuelAt(ctx.player.fuel, ctx.now, ctx.rules, ctx.content);
+  const fuel = fuelAt(ctx.player.fuel, ctx.now, ctx.rules, ctx.content, fuelCapacity(ctx.farm, ctx.content));
   if (fuel < vehicle.fuelPerUse) reject('no_fuel', `Out of fuel. It refills over time, or use Farm Cash.`);
 
   let worked = 0;

@@ -179,8 +179,10 @@ button:disabled {
 }
 
 .tool-btn {
-  width: var(--tool-size);
+  /* At least square; wider when the label needs it ("Neighbors"). */
+  min-width: var(--tool-size);
   height: var(--tool-size);
+  padding: 0 4px;
   border: 2px solid transparent;
   border-radius: 12px;
   background: #fff3d6;
@@ -189,7 +191,6 @@ button:disabled {
   align-items: center;
   justify-content: center;
   gap: 3px;
-  padding: 0;
   transition: transform 0.08s ease;
 }
 
@@ -881,12 +882,15 @@ button:disabled {
    zoomed panels are divided by the scale to keep them on screen. */
 .market {
   width: calc(min(760px, 100vw - 32px) / var(--ui-scale, 1));
+  /* A fixed height, so switching to a short tab doesn't move the tabs out from under the pointer. */
+  height: calc(min(80vh, 640px) / var(--ui-scale, 1));
   max-height: calc(min(80vh, 640px) / var(--ui-scale, 1));
 }
 
 .shop {
   width: calc(min(980px, 100vw - 32px) / var(--ui-scale, 1));
-  max-height: calc(min(100vh - 20px - 56px * var(--ui-scale, 1) - var(--safe-top), 800px) / var(--ui-scale, 1));
+  height: calc(min(100vh - 20px - 56px * var(--ui-scale, 1) - var(--safe-top), 800px) / var(--ui-scale, 1));
+  max-height: none;
 }
 
 /* The market opens below the top bar, so coins and cash stay in view while shopping. */
@@ -1191,7 +1195,8 @@ button:disabled {
 .market-tabs .tab {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
+  padding: 0 10px;
   white-space: nowrap;
 }
 
@@ -1471,6 +1476,292 @@ button:disabled {
 .daily-day.today {
   background: #fff8e1;
   box-shadow: inset 0 0 0 3px #ffca28;
+}
+
+/* ------------------------------------------------------------------ Phase 6: neighbors, co-op jobs, supplies, construction */
+
+/* Emoji on a swatch (supplies and parts have no farm art). */
+.swatch {
+  display: grid;
+  place-items: center;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.swatch.small {
+  font-size: 13px;
+}
+
+.swatch.tiny {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin: 0 4px 0 0;
+  border-width: 1px;
+  vertical-align: -1px;
+}
+
+.avatar {
+  display: inline-grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 3px solid #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  font-size: 26px;
+  line-height: 1;
+  flex: none;
+}
+
+.avatar-small {
+  width: 24px;
+  height: 24px;
+  border-width: 2px;
+  font-size: 13px;
+  box-shadow: none;
+  vertical-align: middle;
+}
+
+.neighbor-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.neighbor-card,
+.job-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: #fff;
+  border: 2px solid #e6d3a8;
+}
+
+.neighbor-card {
+  align-items: center;
+  text-align: center;
+}
+
+.neighbor-card .btn {
+  margin-top: 4px;
+  align-self: stretch;
+}
+
+.hearts {
+  color: #e91e63;
+  letter-spacing: 1px;
+  font-size: 13px;
+}
+
+.section-title {
+  margin: 16px 0 6px;
+  font-size: 15px;
+}
+
+.activity-log {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+}
+
+.activity-log li {
+  padding: 4px 0;
+  border-bottom: 1px solid #ecdcb8;
+}
+
+.mail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.book-row.mail-row {
+  grid-template-columns: auto 1fr auto auto;
+}
+
+.mail-row .book-name {
+  display: block;
+  font-weight: 400;
+}
+
+.job-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px;
+}
+
+.job-card.locked {
+  opacity: 0.55;
+  background: #f5f0e6;
+}
+
+.job-card > .btn {
+  align-self: flex-start;
+  margin-top: 4px;
+}
+
+.job-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.job-goals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.job-start {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.partner-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 34px;
+  padding: 0 10px 0 4px;
+  border-radius: 17px;
+  border: 2px solid #e6d3a8;
+  background: #fff;
+  color: var(--panel-fg);
+  font-size: 13px;
+}
+
+.chip.active {
+  border-color: #66bb6a;
+  background: #e8f5e9;
+}
+
+.active-job {
+  max-width: 560px;
+  margin: 0 auto;
+}
+
+.medal-track {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 13px;
+}
+
+.medal-step.gone {
+  opacity: 0.45;
+  text-decoration: line-through;
+}
+
+.job-progress,
+.parts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 6px 0;
+}
+
+.goal-row {
+  display: grid;
+  grid-template-columns: minmax(90px, 0.9fr) minmax(80px, 1.2fr) auto;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.goal-name {
+  font-weight: 600;
+}
+
+/* Construction parts: "N in gift box" under the part name. */
+.goal-name.stacked {
+  display: flex;
+  flex-direction: column;
+}
+
+.goal-name small {
+  font-weight: 400;
+}
+
+.goal-count {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.partner {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-right: 8px;
+}
+
+.dialog.construction {
+  width: min(460px, calc(100vw - 32px));
+}
+
+.hud-job.ready {
+  background: #2e7d32;
+  animation: job-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes job-pulse {
+  50% {
+    box-shadow: 0 0 0 4px rgba(129, 199, 132, 0.6);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hud-job.ready {
+    animation: none;
+  }
+}
+
+.supply-card.is-locked {
+  opacity: 0.55;
+  background: #f5f0e6;
+}
+
+.card-parts {
+  color: #8d6e63;
+  font-weight: 600;
+}
+
+/* Visiting: neighbor buttons in the toolbar. */
+.visit-btn .avatar-small {
+  width: 28px;
+  height: 28px;
+  font-size: 16px;
+}
+
+.tool-check {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #43a047;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
 }
 
 /* ------------------------------------------------------------------ Debug */
@@ -1759,6 +2050,46 @@ button:disabled {
   }
 
   .collections {
+    grid-template-columns: 1fr;
+  }
+
+  .wide-only {
+    display: none;
+  }
+
+  /* Neighbor cards become compact rows: picture on the left. */
+  .neighbor-grid {
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 6px;
+  }
+
+  .neighbor-card {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: 8px;
+    align-items: center;
+    justify-items: start;
+    text-align: left;
+    padding: 6px 8px;
+  }
+
+  .neighbor-card .avatar {
+    grid-row: span 4;
+    width: 40px;
+    height: 40px;
+    font-size: 22px;
+  }
+
+  .neighbor-card > :not(.avatar) {
+    grid-column: 2;
+  }
+
+  .neighbor-card .btn {
+    margin-top: 2px;
+    min-height: 30px;
+  }
+
+  .job-list {
     grid-template-columns: 1fr;
   }
 }

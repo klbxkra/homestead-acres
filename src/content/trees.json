@@ -1,12 +1,16 @@
 [
   { "id": "apple_tree", "name": "Apple Tree", "cost": 300, "xp": 5, "cycleHours": 72, "yield": 75, "unlockLevel": 4 },
   { "id": "lemon_tree", "name": "Lemon Tree", "cost": 350, "xp": 5, "cycleHours": 60, "yield": 70, "unlockLevel": 5 },
+  { "id": "pear_tree", "name": "Pear Tree", "cost": 400, "xp": 5, "cycleHours": 60, "yield": 80, "unlockLevel": 6 },
   { "id": "cherry_tree", "name": "Cherry Tree", "cost": 450, "xp": 6, "cycleHours": 48, "yield": 65, "unlockLevel": 7 },
   { "id": "orange_tree", "name": "Orange Tree", "cost": 500, "xp": 6, "cycleHours": 72, "yield": 100, "unlockLevel": 9 },
   { "id": "peach_tree", "name": "Peach Tree", "cost": 600, "xp": 7, "cycleHours": 72, "yield": 110, "unlockLevel": 11 },
   { "id": "plum_tree", "name": "Plum Tree", "cost": 650, "xp": 7, "cycleHours": 48, "yield": 85, "unlockLevel": 13 },
+  { "id": "pomegranate_tree", "name": "Pomegranate Tree", "cost": 700, "xp": 7, "cycleHours": 60, "yield": 120, "unlockLevel": 14 },
   { "id": "banana_tree", "name": "Banana Tree", "cost": 800, "xp": 8, "cycleHours": 72, "yield": 140, "unlockLevel": 16 },
   { "id": "olive_tree", "name": "Olive Tree", "cost": 900, "xp": 9, "cycleHours": 96, "yield": 190, "unlockLevel": 19 },
+  { "id": "maple_tree", "name": "Maple Tree", "cost": 1000, "xp": 10, "cycleHours": 96, "yield": 200, "unlockLevel": 21 },
   { "id": "avocado_tree", "name": "Avocado Tree", "cost": 1100, "xp": 10, "cycleHours": 72, "yield": 170, "unlockLevel": 23 },
-  { "id": "fig_tree", "name": "Fig Tree", "cost": 1300, "xp": 12, "cycleHours": 96, "yield": 230, "unlockLevel": 27 }
+  { "id": "fig_tree", "name": "Fig Tree", "cost": 1300, "xp": 12, "cycleHours": 96, "yield": 230, "unlockLevel": 27 },
+  { "id": "coconut_palm", "name": "Coconut Palm", "cost": 1500, "xp": 13, "cycleHours": 96, "yield": 260, "unlockLevel": 29 }
 ]

@@ -1,0 +1,10 @@
+[
+  { "id": "fertilizer", "name": "Fertilizer", "kind": "fertilizer", "area": 3, "coins": 150, "unlockLevel": 2, "description": "Fertilizes up to 9 growing crops so they sell for more." },
+  { "id": "unwither_tonic", "name": "Unwither Tonic", "kind": "unwither", "cash": 2, "unlockLevel": 4, "description": "Revives every withered crop on your farm." },
+  { "id": "instagrow", "name": "Instagrow", "kind": "instagrow", "area": 3, "cash": 2, "unlockLevel": 6, "description": "Ripens up to 9 growing crops instantly." },
+  { "id": "fuel_can", "name": "Fuel Can", "kind": "fuel", "amount": 5, "cash": 1, "unlockLevel": 10, "description": "Adds 5 fuel to your tank." },
+  { "id": "nail", "name": "Nails", "kind": "part", "coins": 150, "description": "A building part." },
+  { "id": "wooden_board", "name": "Wooden Board", "kind": "part", "coins": 250, "description": "A building part." },
+  { "id": "brick", "name": "Brick", "kind": "part", "coins": 300, "description": "A building part." },
+  { "id": "shingle", "name": "Roof Shingle", "kind": "part", "coins": 350, "description": "A building part." }
+]

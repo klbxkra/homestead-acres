@@ -29,10 +29,20 @@ export class Harness {
   lastEvents: GameEvent[] = [];
   readonly content: Content;
 
+  /**
+   * Classic rules with no AI neighbours unless asked for, so their daily visits
+   * (fertilizing crops, feeding animals) don't change what older tests expect.
+   */
   constructor(rules: Partial<WorldRules> = {}, content: Content = defaultContent) {
     this.content = content;
     this.state = newGame(
-      { farmName: 'Test Farm', playerName: 'Tester', realNow: T0, seed: 1, rules: { ...rulesForPreset('classic'), ...rules } },
+      {
+        farmName: 'Test Farm',
+        playerName: 'Tester',
+        realNow: T0,
+        seed: 1,
+        rules: { ...rulesForPreset('classic'), aiNeighborCount: 0, ...rules },
+      },
       content,
     );
   }
@@ -70,7 +80,7 @@ export class Harness {
   advance(ms: number, { asOneGap = false } = {}): void {
     if (asOneGap) {
       this.realNow += ms;
-      this.state = tick(this.state, this.realNow);
+      this.state = tick(this.state, this.realNow, this.content);
       return;
     }
     const step = 30_000;
@@ -79,7 +89,7 @@ export class Harness {
       const d = Math.min(step, left);
       this.realNow += d;
       left -= d;
-      this.state = tick(this.state, this.realNow);
+      this.state = tick(this.state, this.realNow, this.content);
     }
   }
 
