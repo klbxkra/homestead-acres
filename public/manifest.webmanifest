@@ -1,0 +1,17 @@
+{
+  "name": "Homestead Acres",
+  "short_name": "Homestead",
+  "description": "Plow, plant and harvest your way to the best farm in the county. Plays offline; your farms stay on this device.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#3d6b2a",
+  "theme_color": "#5a8f3c",
+  "categories": ["games", "entertainment"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

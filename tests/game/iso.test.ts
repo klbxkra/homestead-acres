@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { farmBounds, pickTile, tileToWorld, TILE_HEIGHT, TILE_WIDTH } from '../../src/game/iso';
+import { cameraWorldRect, farmBounds, pickTile, tileToWorld, TILE_HEIGHT, TILE_WIDTH } from '../../src/game/iso';
 
 describe('iso projection', () => {
   it('places tile (0,0) at the origin and steps by half-tiles', () => {
@@ -37,5 +37,16 @@ describe('iso projection', () => {
       expect(c.y).toBeGreaterThan(b.top);
       expect(c.y).toBeLessThan(b.bottom);
     }
+  });
+});
+
+describe('cameraWorldRect', () => {
+  it('matches the camera at zoom 1 and shrinks around the centre when zoomed in', () => {
+    expect(cameraWorldRect(100, 50, 800, 600, 1)).toEqual({ x: 100, y: 50, width: 800, height: 600 });
+    const r = cameraWorldRect(100, 50, 800, 600, 2);
+    expect(r).toEqual({ x: 300, y: 200, width: 400, height: 300 });
+    // The centre of the view doesn't move with zoom.
+    expect(r.x + r.width / 2).toBe(100 + 400);
+    expect(r.y + r.height / 2).toBe(50 + 300);
   });
 });

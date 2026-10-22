@@ -3,11 +3,13 @@ import type { GameApp } from '../app/GameApp';
 import type { Session } from '../app/session';
 import { GAME_VERSION } from '../config';
 import { isTouchPrimary, renderPixelRatio, viewportSize } from '../platform/device';
-import { AppNotice, DailyBonus, NeighborNews, WelcomeBack } from './AppPopups';
+import { AppNotice, DailyBonus, NeighborNews, UpdateBanner, WelcomeBack } from './AppPopups';
+import { Celebration } from './Celebration';
 import { ConstructionDialog } from './ConstructionDialog';
 import { FarmerBook } from './FarmerBook';
 import { InventoryPanel } from './Inventory';
 import { GameMenu } from './GameMenu';
+import { HelpDialog } from './HelpDialog';
 import { useStore } from './hooks';
 import { Hud } from './Hud';
 import { Market } from './Market';
@@ -16,9 +18,10 @@ import { SettingsDialog } from './SettingsDialog';
 import { ConfirmDialog, Toasts, TooltipView } from './Popups';
 import { TitleScreen } from './TitleScreen';
 import { Toolbar } from './Toolbar';
+import { TutorialCoach } from './TutorialCoach';
 
 export function App({ gameApp }: { gameApp: GameApp }) {
-  const { screen } = useStore(gameApp.store);
+  const { screen, helpOpen } = useStore(gameApp.store);
   const { uiScale } = useStore(gameApp.settings);
   const session = gameApp.session;
 
@@ -30,8 +33,10 @@ export function App({ gameApp }: { gameApp: GameApp }) {
     <>
       {screen === 'farm' && session ? <FarmUi gameApp={gameApp} session={session} /> : <TitleScreen gameApp={gameApp} />}
       <SettingsDialog gameApp={gameApp} />
+      {helpOpen && <HelpDialog onClose={() => gameApp.setHelpOpen(false)} />}
       <WelcomeBack gameApp={gameApp} />
       <AppNotice gameApp={gameApp} />
+      <UpdateBanner gameApp={gameApp} />
       {import.meta.env.DEV && <DebugInfo />}
       <div class="rotate-overlay">
         <div class="icon">📱</div>
@@ -54,6 +59,8 @@ function FarmUi({ gameApp, session }: { gameApp: GameApp; session: Session }) {
       <NeighborsPanel session={session} />
       <ConstructionDialog session={session} />
       <NeighborNews session={session} />
+      <Celebration session={session} />
+      <TutorialCoach gameApp={gameApp} session={session} />
       <DailyBonus gameApp={gameApp} session={session} />
       <ConfirmDialog session={session} />
     </>

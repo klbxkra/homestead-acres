@@ -82,6 +82,24 @@ export function NeighborNews({ session }: { session: Session }) {
   return null;
 }
 
+/** "A new version is ready" (the service worker downloaded an update). */
+export function UpdateBanner({ gameApp }: { gameApp: GameApp }) {
+  const { updateReady, busy } = useStore(gameApp.store);
+  const [later, setLater] = useState(false);
+  if (!updateReady || later) return null;
+  return (
+    <div class="update-banner interactive" role="status">
+      <span>🌱 A new version of the game is ready.</span>
+      <button type="button" class="btn btn-small btn-primary" disabled={busy} onClick={() => void gameApp.updateNow()}>
+        Update now
+      </button>
+      <button type="button" class="btn btn-small" onClick={() => setLater(true)}>
+        Later
+      </button>
+    </div>
+  );
+}
+
 const NOTICE_MS = 7000;
 
 /** App-level messages (load problems, import results), shown on any screen. */

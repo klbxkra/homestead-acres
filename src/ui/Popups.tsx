@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'preact/hooks';
 import type { Session } from '../app/session';
 import { useStore } from './hooks';
 
@@ -20,6 +21,13 @@ export function TooltipView({ session }: { session: Session }) {
 
 export function Toasts({ session }: { session: Session }) {
   const { toasts } = useStore(session.ui);
+  // A low buzz for each new error message.
+  const seen = useRef(0);
+  useEffect(() => {
+    const fresh = toasts.filter((t) => t.id > seen.current);
+    if (fresh.some((t) => t.kind === 'error')) session.audio.play('error');
+    if (toasts.length) seen.current = Math.max(seen.current, ...toasts.map((t) => t.id));
+  }, [toasts, session.audio]);
   return (
     <div class="toasts" aria-live="polite">
       {toasts.map((t) => (

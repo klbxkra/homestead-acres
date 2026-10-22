@@ -20,12 +20,13 @@ import {
 import type { Command, Entity, FarmState, GameEvent, GameState, NeighborState } from '../../core';
 import { renderPixelRatio, vibrate } from '../../platform/device';
 import { describeTile, withArticle } from '../../ui/format';
-import { decorationArt } from '../art/artData';
+import { cropArt, decorationArt } from '../art/artData';
 import {
   animalKey,
   decorationOrigin,
   ensureDecorationTexture,
   generateTextures,
+  setArt,
   TALL_TEX_CENTER_Y,
   TALL_TEX_H,
   TEX_SCALE,
@@ -35,13 +36,19 @@ import {
 const RIBBON_TIERS = ['Yellow', 'White', 'Red', 'Blue'];
 const MEDAL_ICONS = { gold: '🥇', silver: '🥈', bronze: '🥉' } as const;
 const HELP_WORDS = { fertilized: 'Fertilized', unwithered: 'Revived', picked: 'Picked fruit', fed: 'Fed' } as const;
+import { burst } from '../fx/effects';
 import { floatText } from '../fx/floatText';
+import { soundsFor } from '../fx/sounds';
+import { FarmerQueue } from '../queue/farmerQueue';
+import type { Job, JobIcon } from '../queue/farmerQueue';
+import { FarmerView } from '../views/farmerView';
+import { GroundView } from '../views/groundView';
 import { bindPointer } from '../input/bindPointer';
 import type { DragMode, PressInfo, Pt } from '../input/gestures';
 import { KeyboardInput } from '../input/keyboard';
-import { farmBounds, pickTile, tileToWorld, TILE_HEIGHT, TILE_WIDTH } from '../iso';
+import { cameraWorldRect, farmBounds, pickTile, tileToWorld, TILE_HEIGHT, TILE_WIDTH } from '../iso';
 import { resolvePaint, resolveTap, resolveVisitTap } from '../tools/toolActions';
-import { createView, destroyView, DEPTH, setViewAlpha, updateView, viewMismatch } from '../views/entityViews';
+import { createView, destroyView, DEPTH, setViewAlpha, setViewCulled, updateView, viewMismatch } from '../views/entityViews';
 import type { EntityView } from '../views/entityViews';
 
 const MIN_ZOOM = 0.5;
@@ -54,6 +61,16 @@ const PHONE_RAIL_CSS = 110;
 
 /** Errors worth reporting while painting; the rest (already plowed, not ripe...) are expected and silent. */
 const PAINT_REPORTED_ERRORS = new Set(['insufficient_coins', 'locked']);
+
+/** Farm work the farmer walks to (everything else happens at once). */
+const JOB_ICONS: Partial<Record<Command['type'], JobIcon>> = { plow: 'plow', plant: 'plant', harvest: 'harvest' };
+/** Extra world px around the camera view before a sprite counts as off screen. */
+const CULL_MARGIN = 120;
+/**
+ * Most pop-up numbers on screen at once. Each is a text object with its own
+ * small texture, so painting a big field shouldn't create hundreds of them.
+ */
+const MAX_FLOATS = 24;
 
 interface Tile {
   x: number;
@@ -71,7 +88,14 @@ export class FarmScene extends Phaser.Scene {
   private readonly session: Session;
   private pixelRatio = 1;
   private userZoom = 1;
-  private ground!: Phaser.GameObjects.Graphics;
+  private ground!: GroundView;
+  private farmer!: FarmerView;
+  private queue!: FarmerQueue;
+  /** Camera position the views were last culled for. */
+  private culledFor = '';
+  private hopClock = 0;
+  private fullQueueWarned = false;
+  private activeFloats = 0;
   private highlight!: Phaser.GameObjects.Graphics;
   private ghostShape!: Phaser.GameObjects.Graphics;
   private ghostImage!: Phaser.GameObjects.Image;
@@ -130,7 +154,9 @@ export class FarmScene extends Phaser.Scene {
   create(): void {
     this.pixelRatio = renderPixelRatio();
     generateTextures(this, this.transport.content);
-    this.ground = this.add.graphics().setDepth(DEPTH.ground);
+    this.ground = new GroundView(this);
+    this.queue = this.makeQueue({ x: 0, y: 0 });
+    this.farmer = new FarmerView(this);
     this.highlight = this.add.graphics().setDepth(DEPTH.highlight);
     this.ghostShape = this.add.graphics().setDepth(DEPTH.ghost);
     this.ghostImage = this.add.image(0, 0, '__DEFAULT').setScale(1 / TEX_SCALE).setAlpha(0.65).setDepth(DEPTH.ghost + 1).setVisible(false);
@@ -138,8 +164,14 @@ export class FarmScene extends Phaser.Scene {
 
     this.syncState(this.transport.getState());
     this.fitCamera();
+    this.placeFarmer();
+    this.applyBatterySaver();
 
     this.cleanups.push(
+      this.session.settings.subscribe((s, prev) => {
+        if (s.batterySaver !== prev.batterySaver) this.applyBatterySaver();
+        if (s.instantActions && !prev.instantActions) this.queue.flush();
+      }),
       this.transport.subscribeReset(() => this.onReset()),
       this.transport.subscribe((state, events) => {
         this.syncState(state);
@@ -176,6 +208,7 @@ export class FarmScene extends Phaser.Scene {
   /** A different farm was loaded (or we went visiting): drop every view and start from a fresh camera. */
   private onReset(): void {
     this.visitCache = null;
+    this.culledFor = '';
     for (const view of this.views.values()) destroyView(view);
     this.views.clear();
     this.farmSize = { w: 0, h: 0 };
@@ -184,17 +217,89 @@ export class FarmScene extends Phaser.Scene {
     this.ghostTile = null;
     this.painted.clear();
     this.children.list.filter((o) => o.type === 'Text').forEach((o) => o.destroy()); // stray pop-ups
+    this.activeFloats = 0;
     this.syncState(this.transport.getState());
     this.fitCamera();
+    if (!this.ui.get().visiting) this.placeFarmer();
   }
 
-  override update(_time: number, deltaMs: number): void {
+  /** A new farm (or back from visiting): the farmer starts by the front of the farm with nothing to do. */
+  private placeFarmer(): void {
+    this.queue.clear();
+    this.farmer.reset();
+    const s = this.transport.getState();
+    const farm = s.farms[s.homeFarmId]!;
+    this.queue = this.makeQueue({ x: farm.width * 0.5, y: farm.height - 0.6 });
+  }
+
+  private makeQueue(start: { x: number; y: number }): FarmerQueue {
+    return new FarmerQueue({ speed: 7, workMs: 260, maxJobs: 80, execute: (job) => this.runJob(job) }, start);
+  }
+
+  /** Does all waiting farm work at once (leaving the farm, hiding the page). */
+  flushJobs(): void {
+    this.queue.flush();
+  }
+
+  /** 30 fps and fewer effects (Settings > Battery saver). */
+  private applyBatterySaver(): void {
+    const loop = this.game.loop as Phaser.Core.TimeStep & { _limitRate: number };
+    const saver = this.session.settings.get().batterySaver;
+    loop.fpsLimit = saver ? 30 : 0;
+    loop.hasFpsLimit = saver;
+    loop._limitRate = saver ? 1000 / 30 : 0;
+  }
+
+  private get effectsOn(): boolean {
+    return !this.session.settings.get().batterySaver;
+  }
+
+  override update(time: number, deltaMs: number): void {
     if (!this.inputEnabled) return;
     const v = this.keyboard.panVector();
     if (v.x || v.y) {
       const cam = this.cameras.main;
       const step = (KEY_PAN_SPEED * deltaMs) / 1000 / this.userZoom;
       cam.setScroll(cam.scrollX + v.x * step, cam.scrollY + v.y * step);
+    }
+    const visiting = this.ui.get().visiting !== null;
+    const showFarmer = !visiting && !this.session.settings.get().instantActions;
+    this.farmer.setVisible(showFarmer || this.queue.busy);
+    this.queue.update(deltaMs);
+    this.farmer.update(this.queue, deltaMs, this.effectsOn);
+    this.cullViews();
+    this.animateViews(time, deltaMs);
+  }
+
+  /** Hides sprites outside the camera (re-checked only when the camera moves). */
+  private cullViews(): void {
+    const cam = this.cameras.main;
+    const key = `${Math.round(cam.scrollX)},${Math.round(cam.scrollY)},${cam.zoom.toFixed(3)},${this.views.size}`;
+    if (key === this.culledFor) return;
+    this.culledFor = key;
+    // Not cam.worldView: Phaser only refreshes it when rendering, so right after the
+    // camera jumps it still describes the old view.
+    const r = cameraWorldRect(cam.scrollX, cam.scrollY, cam.width, cam.height, cam.zoom);
+    const view = new Phaser.Geom.Rectangle(r.x - CULL_MARGIN, r.y - CULL_MARGIN, r.width + CULL_MARGIN * 2, r.height + CULL_MARGIN * 2);
+    for (const v of this.views.values()) setViewCulled(v, !view.contains(v.wx, v.wy));
+    this.ground.cull(view);
+  }
+
+  /** Ready bubbles bob; now and then an animal hops. */
+  private animateViews(time: number, deltaMs: number): void {
+    const on = this.effectsOn;
+    for (const v of this.views.values()) {
+      if (v.kind !== 'item' || !v.showMarker || v.culled) continue;
+      v.marker.y = v.markerY + (on ? Math.sin(time / 320 + v.wx * 0.05) * 2 : 0);
+    }
+    if (!on) return;
+    this.hopClock += deltaMs;
+    if (this.hopClock < 1800) return;
+    this.hopClock = 0;
+    const animals = [...this.views.values()].filter((v) => v.kind === 'item' && v.entityKind === 'animal' && !v.culled);
+    const pick = animals[Math.floor(Math.random() * animals.length)];
+    if (pick?.kind === 'item' && !this.tweens.isTweening(pick.image)) {
+      this.tweens.add({ targets: pick.image, y: pick.image.y - 5, duration: 140, yoyo: true, ease: 'Quad.easeOut' });
     }
   }
 
@@ -253,26 +358,8 @@ export class FarmScene extends Phaser.Scene {
 
   private rebuildGround(farm: FarmState): void {
     this.farmSize = { w: farm.width, h: farm.height };
-    const g = this.ground.clear();
-    for (let ty = 0; ty < farm.height; ty++) {
-      for (let tx = 0; tx < farm.width; tx++) {
-        const { x, y } = tileToWorld(tx, ty);
-        g.fillStyle((tx + ty) % 2 === 0 ? 0x7cb342 : 0x74a93d, 1);
-        diamondPath(g, x, y, 1, 1);
-        g.fillPath();
-      }
-    }
-    // Farm edge
-    const b = farmBounds(farm.width, farm.height);
-    g.lineStyle(3, 0x5d4037, 0.8);
-    g.beginPath();
-    g.moveTo(0, b.top);
-    g.lineTo(b.right, (b.top + b.bottom) / 2);
-    g.lineTo(0, b.bottom);
-    g.lineTo(b.left, (b.top + b.bottom) / 2);
-    g.closePath();
-    g.strokePath();
-
+    this.ground.rebuild(farm.width, farm.height);
+    this.culledFor = '';
     this.updateCameraBounds();
   }
 
@@ -460,6 +547,7 @@ export class FarmScene extends Phaser.Scene {
 
   private onUiChange(s: UiState, prev: UiState): void {
     if (s.visiting !== prev.visiting) {
+      if (s.visiting) this.queue.flush(); // the farmer finishes up before you head out
       this.syncState(this.transport.getState());
       return;
     }
@@ -492,7 +580,9 @@ export class FarmScene extends Phaser.Scene {
 
     switch (outcome.kind) {
       case 'command': {
-        const { command, confirm } = outcome;
+        const { confirm } = outcome;
+        const command = this.predicted(outcome.command);
+        if (!command) return;
         if (confirm && this.session.settings.get().confirmSell) {
           this.ui.set({ confirm: { message: confirm, confirmLabel: 'Sell', onConfirm: () => this.send(command, tile) } });
         } else {
@@ -520,7 +610,45 @@ export class FarmScene extends Phaser.Scene {
     }
   }
 
+  /**
+   * With jobs waiting, the farm on screen is behind what's been asked for. A
+   * multi-tool tap on a plot that's about to be plowed plants it instead; a
+   * repeat of a waiting job is dropped.
+   */
+  private predicted(command: Command): Command | null {
+    if (command.type !== 'plow' || !this.queue.has(command.x, command.y, 'plow')) return command;
+    const ui = this.ui.get();
+    if (ui.tool === 'multi' && ui.seedId && !this.queue.has(command.x, command.y, 'plant')) {
+      return { type: 'plant', x: command.x, y: command.y, cropId: ui.seedId };
+    }
+    return null;
+  }
+
+  /** Farm work goes to the farmer's queue (unless actions are instant); everything else happens now. */
   private send(command: Command, tile: Tile, quiet = false): boolean {
+    const icon = JOB_ICONS[command.type];
+    if (icon && !this.ui.get().visiting && !this.session.settings.get().instantActions) {
+      const added = this.queue.add({ x: tile.x, y: tile.y, command, icon, quiet });
+      if (added === 'full' && !this.fullQueueWarned) {
+        this.fullQueueWarned = true;
+        toast(this.ui, 'Your farmer has plenty to do. Let him catch up!', 'info');
+      }
+      if (added === 'queued') {
+        this.fullQueueWarned = false;
+        if (this.lastPointerWasTouch && this.session.settings.get().haptics) vibrate(6);
+        if (!quiet) this.session.audio.play('tap');
+      }
+      return added === 'queued';
+    }
+    return this.sendNow(command, tile, quiet);
+  }
+
+  /** The farmer reached a job and did it. */
+  private runJob(job: Job): void {
+    this.sendNow(job.command, { x: job.x, y: job.y }, job.quiet);
+  }
+
+  private sendNow(command: Command, tile: Tile, quiet = false): boolean {
     this.lastActionTile = tile;
     const result = this.transport.send(command);
     if (!result.ok) {
@@ -565,7 +693,8 @@ export class FarmScene extends Phaser.Scene {
     this.painted.add(key);
     const state = this.transport.getState();
     if (this.ui.get().visiting) return;
-    const command = resolvePaint(this.ui.get(), state.farms[state.homeFarmId]!, tile, state.clock.gameNow, state.rules, this.transport.content);
+    const resolved = resolvePaint(this.ui.get(), state.farms[state.homeFarmId]!, tile, state.clock.gameNow, state.rules, this.transport.content);
+    const command = resolved && this.predicted(resolved);
     if (command) this.send(command, tile, true);
   }
 
@@ -587,6 +716,7 @@ export class FarmScene extends Phaser.Scene {
 
   private playEvents(events: readonly GameEvent[]): void {
     const content = this.transport.content;
+    for (const sound of soundsFor(events)) this.session.audio.play(sound);
     let stack = 0;
     const at = (tile: Tile | null) => {
       const t = tile ?? this.lastActionTile ?? { x: 0, y: 0 };
@@ -594,6 +724,7 @@ export class FarmScene extends Phaser.Scene {
       return { x: w.x, y: w.y - 10 - stack++ * 16 };
     };
     for (const e of events) {
+      if (this.effectsOn) this.effect(e);
       switch (e.type) {
         case 'plowed':
         case 'planted':
@@ -620,7 +751,8 @@ export class FarmScene extends Phaser.Scene {
           this.float(at(this.lastActionTile), `+${formatXp(e.amount)} XP`, 'xp', 120);
           break;
         case 'levelUp':
-          toast(this.ui, `Level ${e.level}!${e.cashReward ? ` +${e.cashReward} Farm Cash` : ''}`, 'success');
+          // The big banner is the UI's Celebration; here just a buzz.
+          if (this.lastPointerWasTouch && this.session.settings.get().haptics) vibrate(40);
           break;
         case 'animalHoused': {
           const name = this.itemName(e.itemId);
@@ -731,9 +863,44 @@ export class FarmScene extends Phaser.Scene {
     }
   }
 
+  /** Particles for farm work and celebrations. */
+  private effect(e: GameEvent): void {
+    const tileFx = (x: number, y: number, colors: number[], count = 8, rise = 14) => {
+      const w = tileToWorld(x, y);
+      burst(this, w.x, w.y - 4, { count, colors, spread: 18, rise, durationMs: 600 });
+    };
+    switch (e.type) {
+      case 'plowed':
+        return tileFx(e.x, e.y, [0x8d6e63, 0x6d4c41, 0xa1887f], 7, 8);
+      case 'planted':
+        return tileFx(e.x, e.y, [0x81c784, 0x66bb6a], 5, 10);
+      case 'harvested':
+        return tileFx(e.x, e.y, [cropArt(e.cropId).fruit, 0x81c784, 0xfff59d], 10, 22);
+      case 'collected':
+        return tileFx(e.x, e.y, [0xffd54f, 0xffecb3], 10, 26);
+      case 'neighborHelped':
+        return tileFx(e.x, e.y, [0x81c784, 0xfff59d, 0xffffff], 8, 20);
+      case 'supplyUsed':
+        if (e.x !== null && e.y !== null) {
+          const area = lookup(this.transport.content.supplies, e.itemId)?.area ?? 1;
+          return tileFx(e.x + (area - 1) / 2, e.y + (area - 1) / 2, [0xfff59d, 0xb2ff59, 0xffffff], 18, 24);
+        }
+        return;
+      case 'constructionCompleted': {
+        const s = this.transport.getState();
+        const b = lookup(s.farms[s.homeFarmId]!.entities, e.entityId);
+        if (b) return tileFx(b.x + 0.5, b.y + 0.5, [0xbdbdbd, 0xffd54f, 0xffffff], 24, 30);
+        return;
+      }
+      default:
+        return;
+    }
+  }
+
   private float(p: Pt, text: string, kind: 'coins' | 'cost' | 'xp', delay = 0): void {
-    if (!this.session.settings.get().floatingNumbers) return;
-    floatText(this, p.x, p.y, text, kind, delay);
+    if (!this.session.settings.get().floatingNumbers || this.activeFloats >= MAX_FLOATS) return;
+    this.activeFloats++;
+    floatText(this, p.x, p.y, text, kind, delay, () => this.activeFloats--);
   }
 
   // ---------------------------------------------------------------- overlays
@@ -818,11 +985,11 @@ export class FarmScene extends Phaser.Scene {
     if (!item) return;
     if (item.kind === 'tree' || item.kind === 'animal') {
       const key = item.kind === 'tree' ? treeKey(itemId, false) : animalKey(itemId);
-      this.ghostImage.setTexture(key).setOrigin(0.5, TALL_TEX_CENTER_Y / TALL_TEX_H).setPosition(center.x, center.y).setVisible(true);
+      setArt(this.ghostImage, key).setOrigin(0.5, TALL_TEX_CENTER_Y / TALL_TEX_H).setPosition(center.x, center.y).setVisible(true);
     } else {
       const key = ensureDecorationTexture(this, itemId, item.width, item.height, rotated);
       const origin = decorationOrigin(size.w, size.h, decorationArt(itemId).height, itemId);
-      this.ghostImage.setTexture(key).setOrigin(origin.x, origin.y).setPosition(center.x, center.y).setVisible(true);
+      setArt(this.ghostImage, key).setOrigin(origin.x, origin.y).setPosition(center.x, center.y).setVisible(true);
     }
   }
 

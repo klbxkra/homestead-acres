@@ -7,3 +7,5 @@ coverage/
 Thumbs.db
 .vscode/*
 !.vscode/extensions.json
+# Local AI-assistant tooling (not part of the game)
+.claude/

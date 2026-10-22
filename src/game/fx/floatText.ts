@@ -9,8 +9,8 @@ const COLORS: Record<FloatKind, string> = {
   xp: '#b3e5fc',
 };
 
-/** "+35" style pop-up that rises and fades at a world position. */
-export function floatText(scene: Phaser.Scene, x: number, y: number, text: string, kind: FloatKind, delayMs = 0): void {
+/** "+35" style pop-up that rises and fades at a world position. `onDone` runs when it's gone. */
+export function floatText(scene: Phaser.Scene, x: number, y: number, text: string, kind: FloatKind, delayMs = 0, onDone?: () => void): void {
   const label = scene.add
     .text(x, y, text, {
       fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif',
@@ -33,6 +33,9 @@ export function floatText(scene: Phaser.Scene, x: number, y: number, text: strin
     delay: delayMs,
     ease: 'Cubic.easeOut',
     onStart: () => label.setAlpha(1),
-    onComplete: () => label.destroy(),
+    onComplete: () => {
+      label.destroy();
+      onDone?.();
+    },
   });
 }

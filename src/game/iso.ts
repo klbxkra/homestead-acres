@@ -37,6 +37,16 @@ export function depthOf(tx: number, ty: number): number {
   return tx + ty;
 }
 
+/**
+ * The world rectangle a camera shows (Phaser cameras zoom around their centre).
+ * Same as camera.worldView, but up to date right after the camera moves.
+ */
+export function cameraWorldRect(scrollX: number, scrollY: number, width: number, height: number, zoom: number): { x: number; y: number; width: number; height: number } {
+  const w = width / zoom;
+  const h = height / zoom;
+  return { x: scrollX + (width - w) / 2, y: scrollY + (height - h) / 2, width: w, height: h };
+}
+
 /** World-space bounding box of a rectangular farm of size w x h tiles. */
 export function farmBounds(w: number, h: number): { left: number; right: number; top: number; bottom: number } {
   return {

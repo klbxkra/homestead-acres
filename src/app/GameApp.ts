@@ -9,6 +9,8 @@ import { LocalTransport } from '../net/LocalTransport';
 import type { SendResult } from '../net/Transport';
 import { decodeSave, encodeSave, loadSlot } from '../persistence';
 import type { EmergencyStore, SaveStore, SlotMeta } from '../persistence';
+import { silentAudio } from '../platform/audio';
+import type { GameAudio } from '../platform/audio';
 import { downloadTextFile, safeFileName } from '../platform/files';
 import { watchLifecycle } from '../platform/lifecycle';
 import { requestPersistentStorage } from '../platform/storage';
@@ -18,6 +20,7 @@ import { isNoteworthy, summarizeAway } from './awaySummary';
 import type { AwaySummary } from './awaySummary';
 import type { Session } from './session';
 import { rulesForNewFarm } from './session';
+import { TutorialProgress } from './tutorial';
 import { createSettingsStore } from './settings';
 import type { SettingsStore } from './settings';
 import { createStore } from './store';
@@ -50,6 +53,12 @@ export interface AppState {
   busy: boolean;
   /** Settings dialog tab, or null when closed. 'rules' needs an open farm. */
   settingsOpen: SettingsTab | null;
+  /** A new version of the game is downloaded and waiting (PWA). */
+  updateReady: boolean;
+  /** The browser can install the game as an app. */
+  canInstall: boolean;
+  /** "How to play" is open. */
+  helpOpen: boolean;
 }
 
 export type SettingsTab = 'rules' | 'game';
@@ -59,6 +68,8 @@ export interface RendererHooks {
   start(session: Session): void;
   pause(): void;
   resume(): void;
+  /** Finish queued farm work now (before saving on exit or when the page hides). */
+  flush?(): void;
 }
 
 export interface GameAppOptions {
@@ -70,6 +81,10 @@ export interface GameAppOptions {
   storageWarning?: string | null;
   /** Device settings; defaults to an in-memory store (tests). */
   settings?: SettingsStore;
+  /** Sound; silent by default (tests). */
+  audio?: GameAudio;
+  /** Where tutorial progress is kept; in memory by default (tests). */
+  tutorial?: TutorialProgress;
 }
 
 export interface NewFarmOptions {
@@ -83,6 +98,10 @@ export interface NewFarmOptions {
 export class GameApp {
   readonly store: Store<AppState>;
   readonly settings: SettingsStore;
+  readonly audio: GameAudio;
+  readonly tutorial: TutorialProgress;
+  /** Bumped when the tutorial is restarted, so the coach re-reads its step. */
+  tutorialVersion = 0;
   session: Session | null = null;
   private readonly o: GameAppOptions;
   private readonly now: () => number;
@@ -96,6 +115,11 @@ export class GameApp {
     this.o = options;
     this.now = options.now ?? (() => Date.now());
     this.settings = options.settings ?? createSettingsStore({ load: () => null, save: () => undefined });
+    this.audio = options.audio ?? silentAudio;
+    this.tutorial = options.tutorial ?? new TutorialProgress(null);
+    const syncVolumes = () => this.audio.setVolumes(this.settings.get().sfxVolume, this.settings.get().musicVolume);
+    syncVolumes();
+    this.settings.subscribe(syncVolumes);
     this.store = createStore<AppState>({
       screen: 'loading',
       slots: [],
@@ -108,7 +132,32 @@ export class GameApp {
       storageWarning: options.storageWarning ?? null,
       busy: false,
       settingsOpen: null,
+      updateReady: false,
+      canInstall: false,
+      helpOpen: false,
     });
+  }
+
+  setHelpOpen(helpOpen: boolean): void {
+    this.store.set({ helpOpen, menuOpen: false });
+  }
+
+  private applyUpdate: (() => void) | null = null;
+
+  /** The service worker has a new version ready; `apply` switches to it. */
+  setUpdateReady(apply: () => void): void {
+    this.applyUpdate = apply;
+    this.store.set({ updateReady: true });
+  }
+
+  /** Saves, then reloads into the new version. */
+  async updateNow(): Promise<void> {
+    await this.saveNow();
+    this.applyUpdate?.();
+  }
+
+  setCanInstall(canInstall: boolean): void {
+    this.store.set({ canInstall });
   }
 
   async init(): Promise<void> {
@@ -119,8 +168,14 @@ export class GameApp {
   /** Hooks saving into tab hide / page unload. Returns an unsubscribe function. */
   attachLifecycle(): () => void {
     return watchLifecycle({
-      hidden: () => this.onHidden(),
-      visible: () => this.onVisible(),
+      hidden: () => {
+        this.audio.setActive(false);
+        this.onHidden();
+      },
+      visible: () => {
+        this.audio.setActive(true);
+        this.onVisible();
+      },
       leaving: () => this.autosaver?.saveEmergencyCopy(),
     });
   }
@@ -150,6 +205,7 @@ export class GameApp {
       const slotId = makeSlotId(now);
       const meta = metaFor(slotId, state, now, now, 0);
       await this.o.saves.write(slotId, encodeSave(state, now), meta);
+      this.tutorial.set(slotId, 'plow'); // new farms get the tutorial
       this.enterFarm(slotId, state, meta, null);
     });
   }
@@ -178,6 +234,7 @@ export class GameApp {
   async exitToTitle(): Promise<void> {
     await this.busy(async () => {
       this.stopClock();
+      this.o.renderer?.flush?.();
       if (this.autosaver) {
         try {
           await this.autosaver.saveNow();
@@ -194,6 +251,7 @@ export class GameApp {
   }
 
   async saveNow(): Promise<void> {
+    this.o.renderer?.flush?.();
     try {
       await this.autosaver?.saveNow();
     } catch {
@@ -202,6 +260,7 @@ export class GameApp {
   }
 
   async deleteSlot(slotId: string): Promise<void> {
+    this.tutorial.forget(slotId);
     if (this.store.get().slotId === slotId) return; // can't delete the farm that's open
     await this.busy(async () => {
       await this.o.saves.remove(slotId);
@@ -280,6 +339,15 @@ export class GameApp {
 
   // ------------------------------------------------------------------ small UI actions
 
+  /** Settings > Show the tutorial again (for the open farm). */
+  restartTutorial(): void {
+    const slotId = this.store.get().slotId;
+    if (!slotId) return;
+    this.tutorial.set(slotId, 'plow');
+    this.tutorialVersion++;
+    this.store.set({ settingsOpen: null });
+  }
+
   dismissWelcome(): void {
     this.store.set({ welcome: null });
   }
@@ -299,9 +367,13 @@ export class GameApp {
   // ------------------------------------------------------------------ internals
 
   private enterFarm(slotId: string, state: GameState, meta: SlotMeta, welcome: AwaySummary | null, backupOnFirstWrite = true): void {
+    // Opening a farm while another is open: retire the old farm's autosaver
+    // before the new state arrives, or it would save the new farm into the old slot.
+    this.autosaver?.stop();
+    this.autosaver = null;
     if (!this.transport) {
       this.transport = new LocalTransport(state, this.o.content, this.now);
-      this.session = { transport: this.transport, ui: createUiStore(), settings: this.settings };
+      this.session = { transport: this.transport, ui: createUiStore(), settings: this.settings, audio: this.audio };
       this.o.renderer?.start(this.session);
     } else {
       this.session!.ui.set(initialUiState());

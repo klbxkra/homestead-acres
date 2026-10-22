@@ -1764,6 +1764,272 @@ button:disabled {
   text-align: center;
 }
 
+/* ------------------------------------------------------------------ Phase 7: install and updates */
+
+.banner-install {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #e8f5e9;
+  border: 2px solid #81c784;
+  color: #1b5e20;
+}
+
+.banner-install span {
+  flex: 1;
+}
+
+.update-banner {
+  position: absolute;
+  left: 50%;
+  bottom: calc(16px + var(--safe-bottom));
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100vw - 32px);
+  padding: 8px 10px 8px 14px;
+  border-radius: 14px;
+  background: var(--panel-bg);
+  color: var(--panel-fg);
+  border: 2px solid var(--panel-border);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
+  font-size: 14px;
+  z-index: 50;
+}
+
+/* ------------------------------------------------------------------ Phase 7: tutorial and help */
+
+.coach {
+  position: absolute;
+  left: calc(8px + var(--safe-left));
+  top: calc(64px + var(--safe-top));
+  width: min(300px, calc(100vw - 32px));
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: var(--panel-bg);
+  color: var(--panel-fg);
+  border: 3px solid var(--panel-border);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+  zoom: var(--ui-scale, 1);
+}
+
+.coach p {
+  margin: 4px 0 6px;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.coach-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.coach-dots {
+  display: flex;
+  gap: 4px;
+}
+
+.coach-dots span {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #e6d3a8;
+}
+
+.coach-dots span.on {
+  background: #66bb6a;
+}
+
+.link-btn {
+  padding: 0;
+  border: none;
+  background: none;
+  color: #8d6e63;
+  font-size: 12px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* The button a tutorial step is about. */
+.tour-pulse {
+  animation: tour-pulse 1.2s ease-in-out infinite;
+  border-color: #66bb6a !important;
+}
+
+@keyframes tour-pulse {
+  50% {
+    box-shadow: 0 0 0 6px rgba(102, 187, 106, 0.55);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tour-pulse {
+    animation: none;
+    box-shadow: 0 0 0 4px rgba(102, 187, 106, 0.7);
+  }
+}
+
+.dialog.help {
+  width: min(620px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+}
+
+.help-loop {
+  margin: 0 0 12px;
+  padding-left: 20px;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.help-loop li {
+  margin-bottom: 6px;
+}
+
+.help-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.help-table th,
+.help-table td {
+  padding: 5px 6px;
+  border-bottom: 1px solid #ecdcb8;
+  text-align: left;
+  vertical-align: top;
+}
+
+.help-table thead th {
+  color: #8d6e63;
+  font-weight: 700;
+}
+
+.help-keys {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 4px 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+}
+
+.help-keys kbd {
+  display: inline-block;
+  min-width: 46px;
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: #fff;
+  border: 1px solid #d7c4a0;
+  font: 12px ui-monospace, Consolas, monospace;
+  text-align: center;
+}
+
+@media (max-height: 500px) {
+  .coach {
+    top: calc(52px + var(--safe-top));
+    width: min(260px, 40vw);
+    padding: 8px 10px;
+  }
+
+  .coach p {
+    font-size: 12px;
+  }
+}
+
+/* ------------------------------------------------------------------ Phase 7: celebration */
+
+.celebration {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+}
+
+.level-banner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 14px 34px;
+  border-radius: 22px;
+  background: linear-gradient(#fff3c4, #ffe082);
+  border: 4px solid #8d6e63;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  color: #5d4037;
+  animation: banner-in 2200ms ease both;
+  zoom: var(--ui-scale, 1);
+}
+
+.level-banner-title {
+  font-size: 40px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+}
+
+.level-banner-sub {
+  font-size: 16px;
+  font-weight: 700;
+  color: #2e7d32;
+}
+
+@keyframes banner-in {
+  0% {
+    transform: scale(0.3);
+    opacity: 0;
+  }
+  14% {
+    transform: scale(1.08);
+    opacity: 1;
+  }
+  20% {
+    transform: scale(1);
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-30px);
+    opacity: 0;
+  }
+}
+
+.confetti span {
+  position: absolute;
+  top: -12px;
+  width: 9px;
+  height: 14px;
+  border-radius: 2px;
+  animation: confetti-fall linear both;
+}
+
+@keyframes confetti-fall {
+  0% {
+    translate: 0 0;
+    opacity: 1;
+  }
+  100% {
+    translate: 30px 105vh;
+    opacity: 0.6;
+    rotate: 540deg;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .confetti {
+    display: none;
+  }
+  .level-banner {
+    animation-duration: 1ms;
+  }
+}
+
 /* ------------------------------------------------------------------ Debug */
 
 .debug-info {

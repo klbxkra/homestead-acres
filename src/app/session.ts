@@ -1,6 +1,7 @@
 import { PRESET_IDS, rulesForPreset } from '../core';
 import type { PresetId, WorldRules } from '../core';
 import type { Transport } from '../net/Transport';
+import type { GameAudio } from '../platform/audio';
 import type { SettingsStore } from './settings';
 import type { UiStore } from './uiState';
 
@@ -9,6 +10,7 @@ export interface Session {
   transport: Transport;
   ui: UiStore;
   settings: SettingsStore;
+  audio: GameAudio;
 }
 
 /**

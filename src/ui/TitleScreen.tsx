@@ -10,6 +10,7 @@ import { PRESET_INFO } from './presets';
 import { RulesEditor } from './RulesEditor';
 import type { SlotMeta } from '../persistence';
 import { readTextFile } from '../platform/files';
+import { isIos, isStandalone, promptInstall } from '../platform/pwa';
 import { formatDuration, formatNumber } from './format';
 import { useStore } from './hooks';
 
@@ -50,6 +51,7 @@ export function TitleScreen({ gameApp }: { gameApp: GameApp }) {
         </header>
 
         {app.storageWarning && <div class="banner banner-warn">{app.storageWarning}</div>}
+        <InstallTip gameApp={gameApp} canInstall={app.canInstall} />
 
         {app.screen === 'loading' ? (
           <p class="title-loading">Loading your farms…</p>
@@ -89,6 +91,48 @@ export function TitleScreen({ gameApp }: { gameApp: GameApp }) {
       </div>
     </div>
   );
+}
+
+/**
+ * Install the game as an app: a button where the browser offers it (Android,
+ * desktop Chrome/Edge), and a how-to on iPhone and iPad, where installing also
+ * stops iOS from clearing the farm after a week away.
+ */
+function InstallTip({ gameApp, canInstall }: { gameApp: GameApp; canInstall: boolean }) {
+  const { iosHintDismissed } = useStore(gameApp.settings);
+  if (isStandalone()) return null;
+  if (canInstall) {
+    return (
+      <div class="banner banner-install">
+        <span>📲 Install Homestead Acres for a full-screen game that works offline.</span>
+        <button
+          type="button"
+          class="btn btn-small btn-primary"
+          onClick={() =>
+            void promptInstall().then((ok) => {
+              if (!ok) gameApp.setCanInstall(false);
+            })
+          }
+        >
+          Install
+        </button>
+      </div>
+    );
+  }
+  if (isIos() && !iosHintDismissed) {
+    return (
+      <div class="banner banner-install">
+        <span>
+          📲 <b>Keep your farm safe:</b> tap <b>Share</b> <span aria-hidden="true">⬆️</span>, then <b>Add to Home Screen</b>. Safari can clear a website's data
+          after a week unused; installed apps keep it.
+        </span>
+        <button type="button" class="btn btn-small" onClick={() => gameApp.settings.set({ iosHintDismissed: true })}>
+          Got it
+        </button>
+      </div>
+    );
+  }
+  return null;
 }
 
 function SlotCard({ slot, gameApp, busy }: { slot: SlotMeta; gameApp: GameApp; busy: boolean }) {

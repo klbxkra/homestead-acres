@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { GameApp } from '../../src/app/GameApp';
 import { defaultContent } from '../../src/content';
 import { HOUR_MS, rulesForPreset } from '../../src/core';
@@ -90,6 +90,24 @@ describe('GameApp', () => {
     const first = app.store.get().slots.find((s) => s.farmName === 'First')!;
     await app.openSlot(first.slotId);
     expect(player(app).coins).toBe(185);
+  });
+
+  it('never saves one farm over another when a farm opens while one is already open', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] });
+    try {
+      const { app, saves } = makeApp();
+      await app.newFarm({ farmName: 'First', playerName: 'P', preset: 'classic' });
+      const firstSlot = app.store.get().slotId!;
+      // Not reachable from the farm list UI (it exits first), but the app must still keep saves apart.
+      await app.newFarm({ farmName: 'Second', playerName: 'P', preset: 'classic' });
+      app.session!.transport.send({ type: 'plow', x: 1, y: 1 });
+      await vi.advanceTimersByTimeAsync(35_000); // past every autosave delay
+      expect((await saves.read(firstSlot))?.meta?.farmName).toBe('First');
+      await app.exitToTitle();
+      expect(app.store.get().slots.map((s) => s.farmName).sort()).toEqual(['First', 'Second']);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('exports and re-imports a farm as a new slot', async () => {

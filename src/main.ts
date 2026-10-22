@@ -5,12 +5,23 @@ import type { RendererHooks } from './app/GameApp';
 import { defaultContent } from './content';
 import { createGame, farmScene } from './game/createGame';
 import { createSettingsStore } from './app/settings';
-import { createEmergencyStore, IdbSaveStore, localSettingsPersistence, MemorySaveStore } from './persistence';
+import { createEmergencyStore, IdbSaveStore, localSettingsPersistence, MemorySaveStore, safeLocalStorage } from './persistence';
 import type { SaveStore } from './persistence';
+import { TutorialProgress } from './app/tutorial';
+import { createAudio } from './platform/audio';
 import { suppressBrowserGestures, whenViewportReady } from './platform/device';
+import { setUpPwa } from './platform/pwa';
 import { App } from './ui/App';
 
 suppressBrowserGestures();
+
+// Browsers only allow sound after a tap or key press; every gesture also resumes audio iOS paused.
+const audio = createAudio();
+for (const type of ['pointerdown', 'keydown'] as const) window.addEventListener(type, () => audio.unlock(), { capture: true });
+// A soft click for buttons in menus and panels.
+document.addEventListener('click', (e) => {
+  if (e.target instanceof Element && e.target.closest('button:not(:disabled)')) audio.play('tap');
+});
 
 const gameRoot = document.getElementById('game');
 const uiRoot = document.getElementById('ui');
@@ -37,6 +48,9 @@ const renderer: RendererHooks = {
     game?.loop.wake();
     if (game) farmScene(game)?.setInputEnabled(true);
   },
+  flush() {
+    if (game) farmScene(game)?.flushJobs();
+  },
 };
 
 async function openSaveStore(): Promise<{ saves: SaveStore; warning: string | null }> {
@@ -61,8 +75,14 @@ const gameApp = new GameApp({
   renderer,
   storageWarning: warning,
   settings: createSettingsStore(localSettingsPersistence()),
+  audio,
+  tutorial: new TutorialProgress(safeLocalStorage()),
 });
 gameApp.attachLifecycle();
+setUpPwa({
+  onUpdateReady: (apply) => gameApp.setUpdateReady(apply),
+  onInstallable: (available) => gameApp.setCanInstall(available),
+});
 render(h(App, { gameApp }), uiRoot);
 await gameApp.init();
 

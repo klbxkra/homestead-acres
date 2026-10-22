@@ -23,7 +23,8 @@ export function localSettingsPersistence(storage: Storage | null = safeLocalStor
   };
 }
 
-function safeLocalStorage(): Storage | null {
+/** localStorage, or null where it's missing or blocked (private mode, sandboxed frames). */
+export function safeLocalStorage(): Storage | null {
   try {
     return typeof localStorage === 'undefined' ? null : localStorage;
   } catch {

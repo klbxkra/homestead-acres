@@ -50,6 +50,14 @@ export function GameMenu({ gameApp }: { gameApp: GameApp }) {
               type="button"
               class="menu-item"
               role="menuitem"
+              onClick={() => gameApp.setHelpOpen(true)}
+            >
+              ❓ How to play
+            </button>
+            <button
+              type="button"
+              class="menu-item"
+              role="menuitem"
               onClick={() => {
                 gameApp.setMenuOpen(false);
                 if (app.slotId) void gameApp.exportSlot(app.slotId);

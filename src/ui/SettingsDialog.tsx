@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { GameApp, SettingsTab } from '../app/GameApp';
-import { UI_SCALES } from '../app/settings';
-import type { DeviceSettings, UiScale } from '../app/settings';
+import { UI_SCALES, VOLUMES } from '../app/settings';
+import type { DeviceSettings, UiScale, Volume } from '../app/settings';
 import type { WorldRules } from '../core';
 import { useGameState, useStore } from './hooks';
 import { RulesEditor, Segmented } from './RulesEditor';
 
 const SCALE_LABELS: Record<UiScale, string> = { 0.85: 'Small', 1: 'Normal', 1.15: 'Large', 1.3: 'Huge' };
+const VOLUME_LABELS: Record<Volume, string> = { 0: 'Off', 0.25: 'Low', 0.5: 'Medium', 1: 'High' };
+const VOLUME_OPTIONS = VOLUMES.map((v) => [v, VOLUME_LABELS[v]] as const);
 
 export function SettingsDialog({ gameApp }: { gameApp: GameApp }) {
   const { settingsOpen } = useStore(gameApp.store);
@@ -101,7 +103,51 @@ function GameSettings({ gameApp }: { gameApp: GameApp }) {
         <SettingToggle label="Info on hover" hint="With a mouse, show crop timers when hovering over a plot." checked={settings.hoverTooltips} onChange={(hoverTooltips) => set({ hoverTooltips })} />
         <SettingToggle label="Vibration" hint="A short buzz on touch actions, on phones that support it." checked={settings.haptics} onChange={(haptics) => set({ haptics })} />
       </section>
-      <p class="muted small">Sound and music settings arrive with sound in a later update.</p>
+
+      <section>
+        <h3>Sound</h3>
+        <div class="rule-row">
+          <div class="rule-label">
+            <span>Sound effects</span>
+            <small>Plowing, harvesting, coins and level-ups.</small>
+          </div>
+          <Segmented<Volume> value={settings.sfxVolume} options={VOLUME_OPTIONS} onChange={(sfxVolume) => set({ sfxVolume })} />
+        </div>
+        <div class="rule-row">
+          <div class="rule-label">
+            <span>Music</span>
+            <small>A gentle tune while you farm.</small>
+          </div>
+          <Segmented<Volume> value={settings.musicVolume} options={VOLUME_OPTIONS} onChange={(musicVolume) => set({ musicVolume })} />
+        </div>
+      </section>
+
+      <section>
+        <h3>Farming</h3>
+        <SettingToggle
+          label="Instant actions"
+          hint="Plow, plant and harvest at once instead of your farmer walking to each job."
+          checked={settings.instantActions}
+          onChange={(instantActions) => set({ instantActions })}
+        />
+        <SettingToggle
+          label="Battery saver"
+          hint="30 frames a second and fewer animations, for older phones and longer battery life."
+          checked={settings.batterySaver}
+          onChange={(batterySaver) => set({ batterySaver })}
+        />
+        {gameApp.store.get().screen === 'farm' && (
+          <div class="rule-row">
+            <div class="rule-label">
+              <span>Tutorial</span>
+              <small>Walk through the basics again on this farm.</small>
+            </div>
+            <button type="button" class="btn btn-small" onClick={() => gameApp.restartTutorial()}>
+              Show the tutorial again
+            </button>
+          </div>
+        )}
+      </section>
     </div>
   );
 }

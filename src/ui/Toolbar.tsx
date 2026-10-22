@@ -152,6 +152,7 @@ export function Toolbar({ session }: { session: Session }) {
               title={`${t.title} (${t.hotkey})`}
               active={s.tool === t.id}
               pressed={s.tool === t.id}
+              tour={t.id}
               onClick={() => pick(t.id)}
             >
               {t.id === 'seed' && s.seedId && <span class="tool-seed-dot" style={{ background: cropArt(s.seedId).css }} />}
@@ -205,11 +206,11 @@ export function Toolbar({ session }: { session: Session }) {
           <ToolBtn icon="🎁" label="Gifts" title="Gift box & storage (I)" onClick={() => ui.set({ panel: 'inventory' })}>
             {gifts > 0 && <span class="tool-badge">{gifts > 99 ? '99+' : gifts}</span>}
           </ToolBtn>
-          <ToolBtn icon="👥" label="Neighbors" title="Neighbors, gifts and co-op jobs (N)" onClick={() => ui.set({ panel: 'neighbors' })}>
+          <ToolBtn icon="👥" label="Neighbors" title="Neighbors, gifts and co-op jobs (N)" tour="neighbors" onClick={() => ui.set({ panel: 'neighbors' })}>
             {mail > 0 && <span class="tool-badge">{mail > 99 ? '99+' : mail}</span>}
           </ToolBtn>
           <ToolBtn icon="📖" label="Book" title="Farmer's Book: mastery, ribbons, collections (B)" onClick={() => ui.set({ panel: 'book' })} />
-          <ToolBtn icon="🏪" label="Market" title="Market (M)" extraClass="market-btn" onClick={() => ui.set({ marketOpen: true })} />
+          <ToolBtn icon="🏪" label="Market" title="Market (M)" extraClass="market-btn" tour="market" onClick={() => ui.set({ marketOpen: true })} />
         </div>
       </div>
     </div>
@@ -267,13 +268,16 @@ interface ToolBtnProps {
   /** For buttons that open a menu. */
   expanded?: boolean;
   extraClass?: string;
+  /** Tutorial hook: the coach highlights buttons by this name. */
+  tour?: string;
   children?: ComponentChildren;
 }
 
-function ToolBtn({ icon, label, title, onClick, active = false, pressed, expanded, extraClass = '', children }: ToolBtnProps) {
+function ToolBtn({ icon, label, title, onClick, active = false, pressed, expanded, extraClass = '', tour, children }: ToolBtnProps) {
   return (
     <button
       type="button"
+      data-tour={tour}
       class={`tool-btn ${active ? 'active' : ''} ${extraClass}`}
       title={title}
       aria-label={title}
